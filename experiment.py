@@ -270,13 +270,42 @@ def get_particle_data(macc, mdon, racc, r_accdon, v_orb, ang_orb, true_an_i, v_e
 def ang_velocity(macc, mdon, r):
     return np.sqrt(constants.G * (macc + mdon) / r**3)
 
-def get_table_for_system(macc, mdon, racc, a, e, v_fr, v_rot, v_exp, n, dirname):
+def add_fraction(df, frac_i):
+    r_don = (df.iloc[0]['r orb [AU]'] - df.iloc[0]['r L1 [AU]']) / (1 - frac_i)
+    frac_list, newflag_list = [[], []]
+
+    for i in df.index.to_list():    ### 1st condition ###
+        frac_list.append(1 - (df.iloc[i]['r orb [AU]'] - df.iloc[i]['r L1 [AU]']) / (r_don))
+        if df.iloc[i]['ang i [rad]'] > df.iloc[i]['ang orb [rad]']:    ### 3rd condition ###
+            newflag_list.append(0)
+        else:
+            newflag_list.append(1)
+    df['new flag'] = newflag_list
+
+    frac_list = [0 if x < 0 else x for x in frac_list]
+    df['fraction'] = frac_list
+
+    return df
+
+def add_dm(df, mtr_e, T):
+    mtr = 10**(mtr_e) | units.MSun / units.yr
+    dm_don = mtr * T
+    dm_list = []
+
+    for i in df.index.to_list():    ### 1st condition ###
+        dm_list.append((dm_don.value_in(units.kg) / df['fraction'].cumsum().iloc[-1]) * df['fraction'].iloc[i])
+
+    df['dm [kg]'] = dm_list
+
+    return df
+
+def get_table_for_system(macc, mdon, racc, a, e, v_fr, v_rot, v_exp, n, dirname, frac=None, mtr_e=None, step=None, time=None):
     # Creating Filename
     macc_str = '{:=05.2f}macc'.format(macc.value_in(units.MSun)).replace('.', '_')
     mdon_str = '_{:=05.2f}mdon'.format(mdon.value_in(units.MSun)).replace('.', '_')
-    a_str = '_{:=09.4f}a'.format(a.value_in(units.au)).replace('.', '_')
-    e_str = '_{:=07.4f}e'.format(e).replace('.', '_')
-    vfr_string = '_{:=07.4f}vfr'.format(v_fr).replace('.', '_')
+    a_str = '_{:=09.5f}a'.format(a.value_in(units.au)).replace('.', '_')
+    e_str = '_{:=05.3f}e'.format(e).replace('.', '_')
+    vfr_string = '_{:=05.3f}vfr'.format(v_fr).replace('.', '_')
     if v_rot.value_in(units.km * units.s**(-1)) < 0:
         v_rot_str = '_{:=07.2f}rot'.format(v_rot.value_in(units.km * units.s**(-1))).replace('.', '_')
     elif v_rot.value_in(units.km * units.s**(-1)) > 0:
@@ -323,9 +352,12 @@ def get_table_for_system(macc, mdon, racc, a, e, v_fr, v_rot, v_exp, n, dirname)
                       r_L1.value_in(units.au), v_i.value_in(units.km * units.s**(-1)), ang_v, a_p.value_in(units.au), e_p, theta_p_i,
                       flag, v_impact.value_in(units.km * units.s**(-1)), ang_impact]
     
-    df.to_csv(dirname+filename+'.csv')
+    if (frac != None) & (mtr_e != None):
+        df = add_fraction(df, frac)
+        df = add_dm(df, mtr_e, T)
+        filename = '{:=06}_'.format(step)+filename+'_{:=05.2f}f_{}mtr_{:=011.2f}yr'.format(frac, mtr_e, time.value_in(units.yr))
     
-    return filename
+    return filename, df
 
 def vel_limit(macc, mdon, racc, r, sma):
     v_orbit = np.sqrt(constants.G * (macc + mdon) * ((2/r) - (1/sma)))
@@ -409,7 +441,8 @@ def many_systems_a(macc, mdon, racc, a_min, a_max, e, v_fr, v_exp, n_sys, n_dat)
         peri = (a | units.au) * (1 - e)
         v = -1 * vel_limit(macc, mdon, racc, peri, a | units.au)[1] * v_fr    #Donor rotation velocity as -90% v_orb at periastron
         print('Working on system number {} ...'.format(i))
-        filename = get_table_for_system(macc, mdon, racc, a | units.au, e, v_fr, v, v_exp, n_dat, dirname)
+        filename, x = get_table_for_system(macc, mdon, racc, a | units.au, e, v_fr, v, v_exp, n_dat, dirname)
+        x.to_csv(dirname+filename+'.csv')
         f.write(filename+'\n')
         i += 1
     f.close()
@@ -430,7 +463,8 @@ def many_systems_e(macc, mdon, racc, a, e_min, e_max, v_fr, v_exp, n_sys, n_dat)
         print('Working on system number {} ...'.format(i))
         peri = a * (1 - e)
         v = -1 * vel_limit(macc, mdon, racc, peri, a)[1] * v_fr
-        filename = get_table_for_system(macc, mdon, racc, a, e, v_fr, v, v_exp, n_dat, dirname)
+        filename, x = get_table_for_system(macc, mdon, racc, a, e, v_fr, v, v_exp, n_dat, dirname)
+        x.to_csv(dirname+filename+'.csv')
         f.write(filename+'\n')
         i += 1
     f.close()
@@ -451,17 +485,17 @@ def many_systems_v(macc, mdon, racc, a, e, vfr_min, vfr_max, v_exp, n_sys, n_dat
         peri = a * (1 - e)
         v = -1 * vel_limit(macc, mdon, racc, peri, a)[1] * v_fr
         print('Working on system number {} ...'.format(i))
-        filename = get_table_for_system(macc, mdon, racc, a, e, v_fr, v, v_exp, n_dat, dirname)
+        filename, x = get_table_for_system(macc, mdon, racc, a, e, v_fr, v, v_exp, n_dat, dirname)
+        x.to_csv(dirname+filename+'.csv')
         f.write(filename+'\n')
         i += 1
     f.close()
 
-def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, n_dat, evol_a, evol_r):
+def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_dat, ss_freq, evol_a, evol_r):
     '''
     Evolves a system over time until at least one of three conditions is met:
         1. Donor star looses its envelope
-        2. Accretor reaches critical rotation speed
-        3. 
+        3. Iteration reaches 999 999 steps
     This function takes the following input
     :macc_i:    Initial mass of the accretor
     :mdon_i:    Initial mass of the donor
@@ -470,50 +504,113 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, n_dat, evol_a, 
     :e_i:       Initial eccentricity of the system
     :vfr_i:     Initial donor rotation to periastron velocity ratio
     :vexp_i:    Initial donor's expansion velocity
+    :frac:      Overflow fraction at periastron
+    :mtr_e:     Donor's mass loss rate exponent
     :n_dat:     Number of datapoints on an orbit
+    :ss_freq:   Frequency of snapshots
     :evol_a:    Semi-major axis evolution flag. If True, a is updated with each mass gain
     :evol_r:    Accretor's radius evolution flag. If True, racc is updated with each mass gain
     '''
-
-    filename = get_table_for_system(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, n_dat, dirname)
     
+    dirname = './data/{:=04.2f}q_{:=06.2f}a_{:=05.3f}e_{:=04.2f}vfr_{:=04.2f}f_{}mtr_snapshots/'.format(mdon_i/macc_i, a_i.value_in(units.au), e_i, vfr_i, frac, mtr_e)
+    if not os.path.exists(dirname): 
+        os.makedirs(dirname)
+
+    ss_list = open(dirname.split('/')[2]+'.dat', 'x')
+
     macc = macc_i
     mdon = mdon_i
     a = a_i
     e = e_i
+    racc = racc_i
     vfr = vfr_i
     vexp = vexp_i
+
     T = 2 * np.pi * np.sqrt((a**3) / (constants.G * (macc + mdon)))
+    mtr = 10**(mtr_e) | units.MSun / units.yr
+    dm_don = mtr * T
+
+    peri = a * (1 - e)
+    v = -1 * vel_limit(macc, mdon, racc, peri, a)[1] * vfr
+
+    time = 0 | units.yr
+
+    table = pd.read_table('1_SeBa_radius_short.data', sep="\t", skiprows=1, header=None, index_col=False,
+                         names=['M [MSun]', 'M wd [MSun]', 'R ms [RSun]', 'R hg [RSun]', 'R rgb [RSun]', 'R hb [RSun]', 'R agb [RSun]'])
+    m_core = table.iloc[(table['M [MSun]'] - mdon.value_in(units.MSun)).abs().argsort()[:1]].iloc[0]['M wd [MSun]'] | units.MSun
+
 
     if evol_a == False:
-        while:
-            
-            macc +=
-            mdon +=
-            if evol_r == False:
-                racc = racc_i
-            elif evol_r == True:
-                racc = macc**0.8
+        print('Evolving system with initial parameters:\nm_acc = {} MSun,    m_don = {} MSun\nr_acc = {} RSun\na = {} AU,    e = {},    vfr = {}\nmtr = 10^{} MSun/yr,    f_per = {}'.format(macc.value_in(units.MSun), mdon.value_in(units.MSun), racc.value_in(units.RSun), a.value_in(units.au), e, vfr, mtr_e, frac))
+        i = 0
+        while (mdon.value_in(units.MSun) > m_core.value_in(units.MSun)):
+            time += T
+            filename, df = get_table_for_system(macc, mdon, racc, a, e, vfr, v, vexp, n_dat, dirname, frac, mtr_e, i, time)
 
-            get_table_for_system(macc, mdon, racc, a, e)
+            mdon -= dm_don
+            macc += df.loc[(df['flag impact'] == 1)&(df['new flag'] == 1)]['dm [kg]'].cumsum().iloc[-1] | units.kg
+            
+            peri = a * (1 - e)
+            v = -1 * vel_limit(macc, mdon, racc, peri, a)[1] * vfr
+        
+            if evol_r == True:
+                racc = macc**0.8
+            
+            if i % ss_freq == 0:
+                df.to_csv(dirname+filename+'.csv')
+                ss_list.write(filename+'\n')
+
+            print('    step {:=06} ({:=011.2f} years)'.format(i, time.value_in(units.yr)))
+
+            if i == 999999:
+                break
+
+            i += 1
 
     elif evol_a == True:
-        while:
-            T = 2 * np.pi * np.sqrt((a**3) / (constants.G * (macc + mdon)))
-            mu = (macc * mdon) / (macc + mdon)
-            L_orb = (mu * 2 * np.pi * a**2) / T
-            dm_don =
-            dm_acc =
-            muf = ((macc+dm_g) * (mdon-dm_l)) / (macc + mdon + dm_g - dm_l)
-            af = (L_orb**2 / (constants.G * (macc + mdon))) * muf**-2
+        print('Evolving system with initial parameters:\nm_acc = {} MSun,    m_don = {} MSun\nr_acc = {} RSun\na = {} AU,    e = {},    vfr = {}\nmtr = 10^{} MSun/yr,    f_per = {}'.format(macc.value_in(units.MSun), mdon.value_in(units.MSun), racc.value_in(units.RSun), a.value_in(units.au), e, vfr, mtr_e, frac))
 
+        # Initial angular momentum (must be conserved)
+        mu = (macc * mdon) / (macc + mdon)
+        L_orb = (mu * 2 * np.pi * a**2) / T
+        i = 0
+
+        while (mdon.value_in(units.MSun) > m_core.value_in(units.MSun)):
+            time += T
+            filename, df = get_table_for_system(macc, mdon, racc, a, e, vfr, v, vexp, n_dat, dirname, frac, mtr_e, i, time)
+
+            dm_acc = df.loc[(df['flag impact'] == 1)&(df['new flag'] == 1)]['dm [kg]'].cumsum().iloc[-1] | units.kg
+
+            muf = ((macc+dm_acc) * (mdon-dm_don)) / (macc + mdon + dm_acc - dm_don)
+            a = (L_orb**2 / (constants.G * (macc + mdon))) * muf**-2
+
+            mdon -= dm_don
+            macc += dm_acc
+            T = 2 * np.pi * np.sqrt((a**3) / (constants.G * (macc + mdon)))
+
+            peri = a * (1 - e)
+            v = -1 * vel_limit(macc, mdon, racc, peri, a)[1] * vfr
+
+            if evol_r == True:
+                racc = macc**0.8
+
+            if i % ss_freq == 0:
+                df.to_csv(dirname+filename+'.csv')
+                ss_list.write(filename+'\n')
+            
+            print('    step {:=06} ({:=011.2f} years)'.format(i, time.value_in(units.yr)))
+
+            if i == 999999:
+                break
+            
+            i += 1
 
 def new_option_parser():
     result = OptionParser()
     result.add_option("--mode",
                       dest="mode", type="str",
                       default = 's',
-                      help="run a single system (s), vary a (a), e (e) or v_fr (v)")
+                      help="run a single system (s), vary a (a), e (e), v_fr (v) or evolve over time (evolve)")
     result.add_option("--macc", unit=units.MSun,
                       dest="macc", type="float",
                       default = 1.,
@@ -570,6 +667,26 @@ def new_option_parser():
                       dest="v_rad", type="float", 
                       default = 0.0,
                       help="additional radial velocity (expansion of donor is positive)")
+    result.add_option("-f",
+                      dest="frac", type="float", 
+                      default = 0.10,
+                      help="overflow fraction value at periastron")
+    result.add_option("--mtr",
+                      dest="mtr", type="float", 
+                      default = -6,
+                      help="exponent of mass loss rate in MSun / yr")
+    result.add_option("--ssf",
+                      dest="ssf", type="int", 
+                      default = 100,
+                      help="steps between snapshots for evolution mode")
+    result.add_option("--eva",
+                      dest="eva", 
+                      default = True,
+                      help="wether to evolve a during mass transfer")
+    result.add_option("--evr",
+                      dest="evr",
+                      default = False,
+                      help="wether to evolve racc during mass transfer")
     result.add_option("--ndat",
                       dest="n_dat", type="int", 
                       default = 400,
@@ -591,12 +708,15 @@ if not os.path.exists('./data/'):
 if o.mode == 's':
     peri = o.a * (1 - o.e)
     v = -1 * vel_limit(o.macc, o.mdon, o.racc, peri, o.a)[1] * o.v_fr
-    filename = get_table_for_system(o.macc, o.mdon, o.racc, o.a, o.e, o.v_fr, v, o.v_rad, o.n_dat, './data/')
+    filename, x = get_table_for_system(o.macc, o.mdon, o.racc, o.a, o.e, o.v_fr, v, o.v_rad, o.n_dat, './data/')
+    x.to_csv('./data/'+filename+'.csv')
 elif o.mode == 'a':
     many_systems_a(o.macc, o.mdon, o.racc, o.amin, o.amax, o.e, o.v_fr, o.v_rad, o.n_sys, o.n_dat)
 elif o.mode == 'e':
     many_systems_e(o.macc, o.mdon, o.racc, o.a, o.emin, o.emax, o.v_fr, o.v_rad, o.n_sys, o.n_dat)
 elif o.mode == 'v':
     many_systems_v(o.macc, o.mdon, o.racc, o.a, o.e, o.v_fr_min, o.v_fr_max, o.v_rad, o.n_sys, o.n_dat)
+elif o.mode == 'evolve':
+    system_evol(o.macc, o.mdon, o.racc, o.a, o.e, o.v_fr, o.v_rad, o.frac, o.mtr, o.n_dat, o.ssf, o.eva, o.evr)
 else:
     print('Invalid mode. Please try again :/')
