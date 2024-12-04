@@ -290,30 +290,36 @@ def add_fraction(df, frac_i):
 def add_dm(df, mtr_e, T):
     mtr = 10**(mtr_e) | units.MSun / units.yr
     dm_don = mtr * T
+    
+    df_loss = df.loc[df['new flag'] == 1]
+
     dm_list = []
-
     for i in df.index.to_list():    ### 1st condition ###
-        dm_list.append((dm_don.value_in(units.kg) / df['fraction'].cumsum().iloc[-1]) * df['fraction'].iloc[i])
+        if df.iloc[i]['new flag'] == 1:
+            dm_list.append((dm_don.value_in(units.MSun) / df_loss['fraction'].cumsum().iloc[-1]) * df['fraction'].iloc[i])
+        else:
+            dm_list.append(0)
 
-    df['dm [kg]'] = dm_list
+    df['dm [MSun]'] = dm_list
 
     return df
 
 def get_table_for_system(macc, mdon, racc, a, e, v_fr, v_rot, v_exp, n, dirname, frac=None, mtr_e=None, step=None, time=None):
     # Creating Filename
-    macc_str = '{:=05.2f}macc'.format(macc.value_in(units.MSun)).replace('.', '_')
-    mdon_str = '_{:=05.2f}mdon'.format(mdon.value_in(units.MSun)).replace('.', '_')
-    a_str = '_{:=09.5f}a'.format(a.value_in(units.au)).replace('.', '_')
-    e_str = '_{:=05.3f}e'.format(e).replace('.', '_')
-    vfr_string = '_{:=05.3f}vfr'.format(v_fr).replace('.', '_')
+    macc_str = '{:=07.4f}macc'.format(macc.value_in(units.MSun))
+    mdon_str = '_{:=07.4f}mdon'.format(mdon.value_in(units.MSun))
+    racc_str = '_{:=07.4f}racc'.format(racc.value_in(units.RSun))
+    a_str = '_{:=09.5f}a'.format(a.value_in(units.au))
+    e_str = '_{:=05.3f}e'.format(e)
+    vfr_string = '_{:=05.3f}vfr'.format(v_fr)
     if v_rot.value_in(units.km * units.s**(-1)) < 0:
-        v_rot_str = '_{:=07.2f}rot'.format(v_rot.value_in(units.km * units.s**(-1))).replace('.', '_')
+        v_rot_str = '_{:=07.2f}rot'.format(v_rot.value_in(units.km * units.s**(-1)))
     elif v_rot.value_in(units.km * units.s**(-1)) > 0:
-        v_rot_str = '_+{:=06.2f}rot'.format(v_rot.value_in(units.km * units.s**(-1))).replace('.', '_')
+        v_rot_str = '_+{:=06.2f}rot'.format(v_rot.value_in(units.km * units.s**(-1)))
     elif v_rot.value_in(units.km * units.s**(-1)) == 0:
-        v_rot_str = '_+000_00rot'
+        v_rot_str = '_+000.00rot'
     
-    filename = macc_str + mdon_str + a_str + e_str + vfr_string + v_rot_str
+    filename = macc_str + mdon_str + racc_str + a_str + e_str + vfr_string + v_rot_str
     
     # Prepare dataframe to store data
     data = {'theta i [rad]': np.zeros(n),    ###
@@ -409,9 +415,9 @@ def a_max_guess(macc, mdon, vfr, rdon_max):
     return sorted2[0][1]
 
 def many_systems_a(macc, mdon, racc, a_min, a_max, e, v_fr, v_exp, n_sys, n_dat):
-    e_str = '_{:=07.4f}e'.format(e).replace('.', '_')
-    vfr_str = '_{:=04.2f}vfr'.format(v_fr).replace('.', '_')
-    vexp_str = '_{:=06.2f}vexp'.format(v_exp.value_in(units.km*units.s**-1)).replace('.', '_')
+    e_str = '_{:=07.4f}e'.format(e)
+    vfr_str = '_{:=04.2f}vfr'.format(v_fr)
+    vexp_str = '_{:=06.2f}vexp'.format(v_exp.value_in(units.km*units.s**-1))
     dirname = './data/a'+e_str+vfr_str+vexp_str+'/'
     if not os.path.exists(dirname): 
         os.makedirs(dirname)
@@ -448,9 +454,9 @@ def many_systems_a(macc, mdon, racc, a_min, a_max, e, v_fr, v_exp, n_sys, n_dat)
     f.close()
 
 def many_systems_e(macc, mdon, racc, a, e_min, e_max, v_fr, v_exp, n_sys, n_dat):
-    a_str = '_{:=07.3f}a'.format(a.value_in(units.au)).replace('.', '_')
-    vfr_str = '_{:=04.2f}vfr'.format(v_fr).replace('.', '_')
-    vexp_str = '_{:=06.2f}vexp'.format(v_exp.value_in(units.km*units.s**-1)).replace('.', '_')
+    a_str = '_{:=07.3f}a'.format(a.value_in(units.au))
+    vfr_str = '_{:=04.2f}vfr'.format(v_fr)
+    vexp_str = '_{:=06.2f}vexp'.format(v_exp.value_in(units.km*units.s**-1))
     dirname = './data/e'+a_str+vfr_str+vexp_str+'/'
     if not os.path.exists(dirname): 
         os.makedirs(dirname)
@@ -470,9 +476,9 @@ def many_systems_e(macc, mdon, racc, a, e_min, e_max, v_fr, v_exp, n_sys, n_dat)
     f.close()
 
 def many_systems_v(macc, mdon, racc, a, e, vfr_min, vfr_max, v_exp, n_sys, n_dat):
-    a_str = '_{:=07.3f}a'.format(a.value_in(units.au)).replace('.', '_')
-    e_str = '_{:=07.4f}e'.format(e).replace('.', '_')
-    vexp_str = '_{:=06.2f}vexp'.format(v_exp.value_in(units.km*units.s**-1)).replace('.', '_')
+    a_str = '_{:=07.3f}a'.format(a.value_in(units.au))
+    e_str = '_{:=07.4f}e'.format(e)
+    vexp_str = '_{:=06.2f}vexp'.format(v_exp.value_in(units.km*units.s**-1))
     dirname = './data/vfr'+a_str+e_str+vexp_str+'/'
     if not os.path.exists(dirname): 
         os.makedirs(dirname)
@@ -495,6 +501,7 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
     '''
     Evolves a system over time until at least one of three conditions is met:
         1. Donor star looses its envelope
+        2. Donor is too far to fill its roche lobe
         3. Iteration reaches 999 999 steps
     This function takes the following input
     :macc_i:    Initial mass of the accretor
@@ -516,7 +523,8 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
     if not os.path.exists(dirname): 
         os.makedirs(dirname)
 
-    ss_list = open(dirname.split('/')[2]+'.dat', 'x')
+    # Maximum a for RLOF
+
 
     macc = macc_i
     mdon = mdon_i
@@ -533,22 +541,59 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
     peri = a * (1 - e)
     v = -1 * vel_limit(macc, mdon, racc, peri, a)[1] * vfr
 
-    time = 0 | units.yr
+    mul = 1
+
+    # Creates file containing filenames of all snapshots
+    if not os.path.exists(dirname.split('/')[2]+'.dat'):
+        ss_list = open(dirname.split('/')[2]+'.dat', 'x')
+        ss_list.close()
+        
+        i = 0
+        time = 0 | units.yr
+
+        save = True
+    
+    else:   # Picks up from last step
+        with open(dirname.split('/')[2]+'.dat', 'rb') as f:
+            f.seek(-3, os.SEEK_END)
+            while f.read(1) != b'\n':
+                f.seek(-2, os.SEEK_CUR)
+            last_file = f.readline().decode()
+        
+        i = int(last_file.split('_')[0])
+        time = float(last_file.split('_')[-1].split('yr')[0]) | units.yr
+        macc = float(f.split('macc_')[0].split('_')[1]) + float(f.split('macc_')[0].split('_')[2]) * 1e-4 | units.MSun
+        mdon = float(last_file.split('macc_')[1].split('mdon')[0]) | units.MSun
+        a = float(last_file.split('racc_')[1].split('a_')[0]) | units.au
+        racc = float(last_file.split('mdon_')[1].split('racc_')[0]) | units.RSun
+
+        if i % ss_freq:
+            save = False
+        else:
+            save = True
+
+        print('    ... continuing from step {:=06} ({:=011.2f} years)'.format(i, time.value_in(units.yr)))
 
     table = pd.read_table('1_SeBa_radius_short.data', sep="\t", skiprows=1, header=None, index_col=False,
-                         names=['M [MSun]', 'M wd [MSun]', 'R ms [RSun]', 'R hg [RSun]', 'R rgb [RSun]', 'R hb [RSun]', 'R agb [RSun]'])
+                        names=['M [MSun]', 'M wd [MSun]', 'R ms [RSun]', 'R hg [RSun]', 'R rgb [RSun]', 'R hb [RSun]', 'R agb [RSun]'])
+    # Mimimum mass value for m_don
     m_core = table.iloc[(table['M [MSun]'] - mdon.value_in(units.MSun)).abs().argsort()[:1]].iloc[0]['M wd [MSun]'] | units.MSun
-
+    # Maximum distance for a
+    r_agb = table.iloc[(table['M [MSun]'] - mdon.value_in(units.MSun)).abs().argsort()[:1]].iloc[0]['R agb [RSun]'] | units.RSun
+    amax = a_max_guess(macc, mdon, vfr, r_agb)
 
     if evol_a == False:
         print('Evolving system with initial parameters:\nm_acc = {} MSun,    m_don = {} MSun\nr_acc = {} RSun\na = {} AU,    e = {},    vfr = {}\nmtr = 10^{} MSun/yr,    f_per = {}'.format(macc.value_in(units.MSun), mdon.value_in(units.MSun), racc.value_in(units.RSun), a.value_in(units.au), e, vfr, mtr_e, frac))
-        i = 0
+        
+        # Iterate untill condition 1 is met
         while (mdon.value_in(units.MSun) > m_core.value_in(units.MSun)):
-            time += T
+            time += T * mul
             filename, df = get_table_for_system(macc, mdon, racc, a, e, vfr, v, vexp, n_dat, dirname, frac, mtr_e, i, time)
 
-            mdon -= dm_don
-            macc += df.loc[(df['flag impact'] == 1)&(df['new flag'] == 1)]['dm [kg]'].cumsum().iloc[-1] | units.kg
+            mul = 10
+
+            mdon -= dm_don * mul
+            macc += df.loc[(df['flag impact'] == 1)&(df['new flag'] == 1)]['dm [kg]'].cumsum().iloc[-1] * mul | units.kg
             
             peri = a * (1 - e)
             v = -1 * vel_limit(macc, mdon, racc, peri, a)[1] * vfr
@@ -556,12 +601,19 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
             if evol_r == True:
                 racc = macc**0.8
             
-            if i % ss_freq == 0:
+            if (i % ss_freq == 0) & save:
                 df.to_csv(dirname+filename+'.csv')
+                ss_list = open(dirname.split('/')[2]+'.dat', 'a')
                 ss_list.write(filename+'\n')
+                ss_list.close()
+            elif not save:
+                save = True
 
-            print('    step {:=06} ({:=011.2f} years)'.format(i, time.value_in(units.yr)))
+            print('\tstep {:=06} ({:=011.2f} years)'.format(i, time.value_in(units.yr)))
 
+            # Condition 2 is not available in this mode
+
+            # Break if condition 3 is met
             if i == 999999:
                 break
 
@@ -573,37 +625,64 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
         # Initial angular momentum (must be conserved)
         mu = (macc * mdon) / (macc + mdon)
         L_orb = (mu * 2 * np.pi * a**2) / T
-        i = 0
 
+        # Iterate untill condition 1 is met
         while (mdon.value_in(units.MSun) > m_core.value_in(units.MSun)):
-            time += T
+            time += T * mul
+            print('\tstep {:=06} ({:=011.2f} years)'.format(i, time.value_in(units.yr)))
+            
             filename, df = get_table_for_system(macc, mdon, racc, a, e, vfr, v, vexp, n_dat, dirname, frac, mtr_e, i, time)
 
-            dm_acc = df.loc[(df['flag impact'] == 1)&(df['new flag'] == 1)]['dm [kg]'].cumsum().iloc[-1] | units.kg
-
+            dm_acc = df.loc[(df['flag impact'] == 1)&(df['new flag'] == 1)]['dm [MSun]'].cumsum().iloc[-1] | units.MSun
+            
             muf = ((macc+dm_acc) * (mdon-dm_don)) / (macc + mdon + dm_acc - dm_don)
-            a = (L_orb**2 / (constants.G * (macc + mdon))) * muf**-2
-
-            mdon -= dm_don
-            macc += dm_acc
+            af = (L_orb**2 / (constants.G * (macc + mdon))) * muf**-2
+            
+            # If da is not significant enough, assume as constant for 10^x periods
+            if np.abs((af - a).value_in(units.au)) <= 1e-10:
+                x = 1
+                a = a + (af - a) * 10
+            elif (np.abs((af - a).value_in(units.au)) > 1e-10) & (np.abs((af - a).value_in(units.au)) < 1e-2):
+                mag = np.floor(np.log10(np.abs((af - a).value_in(units.au))))
+                x = -2 - mag
+                print('\t\t...Skipping 10^{} periods into the future'.format(x))
+                a = a + (af - a) * 10**x
+            else:
+                x = 0
+                a = af
+            mul = 10**x
+            
+            mdon -= dm_don * mul
+            macc += dm_acc * mul
             T = 2 * np.pi * np.sqrt((a**3) / (constants.G * (macc + mdon)))
+
+            L_orb = (mu * 2 * np.pi * a**2) / T
 
             peri = a * (1 - e)
             v = -1 * vel_limit(macc, mdon, racc, peri, a)[1] * vfr
-
+            print(v.value_in(units.km * units.s**-1))
             if evol_r == True:
                 racc = macc**0.8
 
-            if i % ss_freq == 0:
+            if (i % ss_freq == 0) & save:
                 df.to_csv(dirname+filename+'.csv')
+                ss_list = open(dirname.split('/')[2]+'.dat', 'a')
                 ss_list.write(filename+'\n')
-            
-            print('    step {:=06} ({:=011.2f} years)'.format(i, time.value_in(units.yr)))
+                ss_list.close()
+            elif not save:
+                save = True
 
+            # Break if condition 2 is met
+            if a.value_in(units.au) >= amax.value_in(units.au):
+                print('\tThe donor star can no longer fill its Roche lobe')
+                break
+
+            # Break if condition 3 is met
             if i == 999999:
                 break
             
             i += 1
+    
 
 def new_option_parser():
     result = OptionParser()

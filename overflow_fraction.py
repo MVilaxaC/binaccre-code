@@ -333,7 +333,7 @@ def comparison(table_list, frac_i, racc, mc, mtr, yn, su):
     flag = 0
     for t in table_list:
         table = pd.read_table(t, header=None, names=['filenames'])
-        L_list, dv_list, par_list, mg_list, da_list = [[], [], [], [], []]
+        L_list, dv_list, par_list, mg_list, da_list , escape_list= [[], [], [], [], [], []]
         for f in table['filenames']:
             macc, mdon, a, e, v_fr, v_extra, df = read_file('./data/'+t.split('.')[0]+'/'+f)
             df_frac = add_fraction(df, frac_i, yn)
@@ -349,10 +349,17 @@ def comparison(table_list, frac_i, racc, mc, mtr, yn, su):
 
             dv = L_tot / (racc * (macc + dm_g))
             v_crit = (constants.G * (macc + dm_g) / racc)**0.5
+
+            L1_vel = df_frac['v i [km s-1]'].loc[(df_frac['flag impact'] == 1.0)&(df_frac['new flag'] == 1.0)] | units.km / units.s
+            L1_r = df_frac['r L1 [AU]'].loc[(df_frac['flag impact'] == 1.0)&(df_frac['new flag'] == 1.0)] | units.au
+            K = 0.5 * L1_vel**2
+            U = constants.G * macc / L1_r
+
             L_list.append(L_tot.value_in(units.kg * units.m**2 * units.s**(-1)))
             dv_list.append(dv/v_crit)
             mg_list.append(dm_g/dm_l)
             da_list.append((af - a).value_in(units.au))
+            escape_list.append(min((K-U).value_in(units.km**2 * units.s**-2)))
             if parname == 'a':
                 par_list.append(a.value_in(units.au))
                 con1 = e
