@@ -19,9 +19,9 @@ def quick_view(filename):
     macc_list, mdon_list, a_list, time_list = [[], [], [], []]
     for f in filelist['filenames']:
         # float(f.split()[].split()[].replace())
-        macc = float(f.split('macc_')[0].split('_')[1]) + float(f.split('macc_')[0].split('_')[2]) * 1e-4
-        mdon = float(f.split('macc_')[1].split('mdon_')[0].replace('_', '.'))
-        a = float(f.split('mdon_')[1].split('a_')[0].replace('_', '.'))
+        macc = float(f.split('macc_')[0].split('_')[1])
+        mdon = float(f.split('macc_')[1].split('mdon_')[0])
+        a = float(f.split('racc_')[1].split('a_')[0])
         time = float(f.split('mtr_')[1].split('yr')[0])
         macc_list.append(macc)
         mdon_list.append(mdon)
@@ -30,22 +30,22 @@ def quick_view(filename):
     
     props = {'fontsize': 11}
 
-    fig, ax = plt.subplots(figsize = (6,6), dpi=300, layout='constrained')
+    fig, ax = plt.subplots(figsize = (6,6), dpi=100, layout='constrained')
     ax.set_xlabel('time [Myr]', **props)
+    
     ax.plot(time_list, a_list)
     ax.set_ylabel(r'$a$ [AU]', **props)
+    ax.set_xlim(left=0.0)
+    ax.set_ylim(bottom=0.0)
     '''
     ax.plot(time_list, macc_list, label='m_acc')
     ax.plot(time_list, mdon_list, label='m_don')
     ax.set_ylabel('m [MSun]', **props)
-    '''
     ax.legend(loc=0)
-
+    '''
     plt.show()
 
     plt.close()
-
-
 
 
 def plot_spinup_a(par, df, cons, varname, values, su):
@@ -295,4 +295,4 @@ if __name__ == "__main__":
     #convergence(['e_001_800a_0_90vfr_000_00vexp_100.dat', 'e_001_800a_0_90vfr_000_00vexp_1000.dat', 'e_001_800a_0_90vfr_000_00vexp_5000.dat'], 0.1, 1 | units.RSun, None, 10**(-4) | units.MSun * units.yr**(-1), 'n', '')
     q_plot(None, ['a_00_1000e_0_90vfr_000_00vexp_0_50q.dat', 'a_00_1000e_0_90vfr_000_00vexp_0_75q.dat', 'a_00_1000e_0_90vfr_000_00vexp_1_00q.dat', 'a_00_1000e_0_90vfr_000_00vexp_1_25q.dat', 'a_00_1000e_0_90vfr_000_00vexp_1_50q.dat'], 1 | units.RSun, 10**(-4) | units.MSun * units.yr**(-1), 0.1, 'n', '')
     '''
-    quick_view('./data/1.20q_001.80a_0.100e_0.90vfr_0.10f_-6mtr_snapshots.dat')
+    quick_view('./1.20q_001.30a_0.100e_0.90vfr_0.10f_-6mtr_snapshots_L.dat')

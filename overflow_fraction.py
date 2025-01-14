@@ -250,7 +250,6 @@ def fraction(datname, frac_i, racc, mc, mtr, yn, su):
         dm_l, dm_g, p_t, p_r, p, L_tot = momentum_mtr(df_frac, racc, T, mtr)
         mg, ml = conservativeness(df_frac)
         
-        
         dv = L_tot / (racc * (macc + dm_g))
         v_crit = (constants.G * (macc + dm_g) / racc)**0.5
         L_list.append(L_tot.value_in(units.kg * units.m**2 * units.s**(-1)))
@@ -330,10 +329,11 @@ def comparison(table_list, frac_i, racc, mc, mtr, yn, su):
     df_plotting = pd.DataFrame()
     df_cons = pd.DataFrame()
     df_transf = pd.DataFrame()
+    df_escape = pd.DataFrame()
     flag = 0
     for t in table_list:
         table = pd.read_table(t, header=None, names=['filenames'])
-        L_list, dv_list, par_list, mg_list, da_list , escape_list= [[], [], [], [], [], []]
+        L_list, dv_list, par_list, mg_list, da_list, escape_list= [[], [], [], [], [], []]
         for f in table['filenames']:
             macc, mdon, a, e, v_fr, v_extra, df = read_file('./data/'+t.split('.')[0]+'/'+f)
             df_frac = add_fraction(df, frac_i, yn)
@@ -350,8 +350,8 @@ def comparison(table_list, frac_i, racc, mc, mtr, yn, su):
             dv = L_tot / (racc * (macc + dm_g))
             v_crit = (constants.G * (macc + dm_g) / racc)**0.5
 
-            L1_vel = df_frac['v i [km s-1]'].loc[(df_frac['flag impact'] == 1.0)&(df_frac['new flag'] == 1.0)] | units.km / units.s
-            L1_r = df_frac['r L1 [AU]'].loc[(df_frac['flag impact'] == 1.0)&(df_frac['new flag'] == 1.0)] | units.au
+            L1_vel = df_frac.loc[(df_frac['flag impact'] == 0.0)&(df_frac['new flag'] == 1.0)]['v i [km s-1]'].array | units.km / units.s
+            L1_r = df_frac['r L1 [AU]'].loc[(df_frac['flag impact'] == 0.0)&(df_frac['new flag'] == 1.0)].array | units.au
             K = 0.5 * L1_vel**2
             U = constants.G * macc / L1_r
 
@@ -359,7 +359,11 @@ def comparison(table_list, frac_i, racc, mc, mtr, yn, su):
             dv_list.append(dv/v_crit)
             mg_list.append(dm_g/dm_l)
             da_list.append((af - a).value_in(units.au))
-            escape_list.append(min((K-U).value_in(units.km**2 * units.s**-2)))
+            try:
+                escape_list.append(max((K-U).value_in(units.km**2 * units.s**-2)))
+            except:
+                escape_list.append(np.nan)
+                
             if parname == 'a':
                 par_list.append(a.value_in(units.au))
                 con1 = e
@@ -376,6 +380,7 @@ def comparison(table_list, frac_i, racc, mc, mtr, yn, su):
             df_plotting[parname] = par_list
             df_cons[parname] = par_list
             df_transf[parname] = par_list
+            df_escape[parname] = par_list
             f = 1
         
         colname = '{:04.2f}'.format(float(t.split(parname+'_')[1][str_range[0]:str_range[1]+1].replace('_', '.')))
@@ -384,6 +389,7 @@ def comparison(table_list, frac_i, racc, mc, mtr, yn, su):
         df_plotting[colname] = dv_list
         df_cons[colname] = mg_list
         df_transf[colname] = da_list
+        df_escape[colname] = escape_list
     
     if conname == 'a':
         constant = a.value_in(units.au)
@@ -396,11 +402,92 @@ def comparison(table_list, frac_i, racc, mc, mtr, yn, su):
     
     #df_plotting.to_csv(parname+'_'+varname+'_{:04.2f}_table.csv'.format(constant))
     #df_cons.to_csv(parname+'_'+varname+'_{:04.2f}_cons_table.csv'.format(constant))
-    df_transf.to_csv(parname+'_'+varname+'_{:04.2f}_da_table.csv'.format(constant))
-    
+    #df_transf.to_csv(parname+'_'+varname+'_{:04.2f}_da_table.csv'.format(constant))
+    df_escape.to_csv(parname+'_'+varname+'_{:04.2f}_escape_table.csv'.format(constant))
     #spinup_comp(par_list, df_plotting, parname, varname, con1, con2, frac_i, T, '_'+su)
     #sp.plot_spinup_a(par_list, df_plotting, r'$e$ = 0.10, $v_{extra}/v_{per}$ = 0.90', r'$q$', [0.25, 0.50, 0.75, 1.00], su)
     #plot_momentum_a(par_list, df_transf, parname, varname, con1, con2, frac_i, T, su)
+
+def evolution(dat_list, parname, su, savecsv=True, doplot=True):
+    
+    dict_df = {}
+
+    for datname in dat_list:
+        df_plot = pd.DataFrame()
+
+        file_table = pd.read_table(datname, header=None, names=['filename'])
+        len_ft = len(file_table['filename'])
+        
+        L = 0 | units.kg * units.m**2 * units.s**-1
+        v = 0
+        T = 0 | units.yr
+        i = 0
+        # Read files 0 to -2
+        macc_list, mdon_list, a_list, L_list, v_list, T_list = [[], [], [], [], [], []]
+        while i < len_ft -1:
+            # Read parameters from file name
+            macc = float(file_table.iloc[i]['filename'].split('macc_')[0].split('_')[-1]) | units.MSun
+            mdon = float(file_table.iloc[i]['filename'].split('mdon_')[0].split('_')[-1]) | units.MSun
+            racc = float(file_table.iloc[i]['filename'].split('racc_')[0].split('_')[-1]) | units.RSun
+            a = float(file_table.iloc[i]['filename'].split('a_')[0].split('_')[-1]) | units.au
+            e = float(file_table.iloc[i]['filename'].split('e_')[0].split('_')[-1])
+            vfr = float(file_table.iloc[i]['filename'].split('vfr_')[0].split('_')[-1])
+            
+            # Read table from file
+            df = pd.read_csv('./data/'+datname.split('.dat')[0]+'/'+file_table.iloc[i]['filename']+'.csv')
+            
+            # Slice where direct impact occurs
+            df_impact = df.loc[(df['flag impact'] == 1.0)&(df['new flag'] == 1.0)]
+            v_t = df_impact['v imp [km s-1]'].astype('float') * np.sin(df_impact['ang imp [rad]'].astype('float'))
+            
+            # Total momentum contribuited in 1 orbit
+            v_t = df_impact['v imp [km s-1]'].astype('float') * np.sin(df_impact['ang imp [rad]'].astype('float'))
+            dm = df_impact['dm [MSun]']
+            L_tot = (racc.value_in(units.km) * v_t * dm).cumsum().iloc[-1] | units.km**2 * units.MSun * units.s**-1
+            
+            if i == 0:
+                mass = macc
+            else:
+                mass = mass
+            print(mass, macc)
+            v_crit = (constants.G * mass / racc)**0.5
+            v = (L / (racc * mass)) / v_crit
+
+            # Period
+            P = 2 * np.pi * ((a**3)/(constants.G * (macc + mdon)))**0.5
+
+            time_next = float(file_table.iloc[i+1]['filename'].split('_')[-1].split('yr')[0]) | units.yr
+            while T.value_in(units.yr) < time_next.value_in(units.yr):
+                macc_list.append(mass.value_in(units.MSun))
+                mdon_list.append(mdon.value_in(units.MSun))
+                a_list.append(a.value_in(units.au))
+                L_list.append(L.value_in(units.kg * units.m**2 * units.s**-1))
+                v_list.append(v)
+                T_list.append(T.value_in(units.yr))
+
+                L += L_tot
+                mass += dm.cumsum().iloc[-1] | units.MSun
+                v_crit = (constants.G * mass / racc)**0.5
+                v = (L / (racc * mass)) / v_crit
+                T += P
+        
+            i += 1
+
+        df_plot['time [yr]'] = T_list
+        df_plot['macc [MSun]'] = macc_list
+        df_plot['mdon [MSun]'] = mdon_list
+        df_plot['a [AU]'] = a_list
+        df_plot['L [kg m2 s-1]'] = L_list
+        df_plot['v'] = v_list
+
+        if savecsv == True:
+            df_plot.to_csv('./data/'+datname.split('.dat')[0]+'_evolution_table.csv')
+        
+        dict_df[datname.split('.dat')[0]] = df_plot
+
+    if doplot == True:
+        spinup_per_period_new(dict_df, [], 'a', su)
+
 
 def new_option_parser():
     result = OptionParser()
@@ -414,7 +501,7 @@ def new_option_parser():
                       help="name of table with filenames to read")
     result.add_option("-m",
                       dest="mtrexp", type="float",
-                      default = -4.,
+                      default = -6.,
                       help="power of mass transfer rate")
     result.add_option("-f",
                       dest="f", type="float",
@@ -479,8 +566,10 @@ if __name__ == "__main__":
             fraction(o.tname, o.f, o.racc, None, mtr, o.yn, o.su)
 
     if o.comp != None:
-        comparison(o.comp.split(','), o.f, o.racc, None, mtr, o.yn, o.su)
+        #comparison(o.comp.split(','), o.f, o.racc, None, mtr, o.yn, o.su)
 
+        evolution(o.comp.split(','), 'a', o.su)
+    
     if o.t12 != None:
         tname1, tname2 = o.t12.split(',')
         t1 = pd.read_csv(tname1)

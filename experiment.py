@@ -124,7 +124,7 @@ def orbit_data(a, e, mtot, T, tau, n):
     for i in df.index.tolist():
         # Angle between the lines conecting the point and each foci
         aux_ang = np.arcsin(np.sin(df.iloc[i]['theta [rad]']) * 2 * (a.value_in(units.au) * e) / (2 * a.value_in(units.au) - df.iloc[i]['r [AU]']))
-        df.iloc[i]['angle [rad]'] = (aux_ang + np.pi) / 2
+        df.loc[i, 'angle [rad]'] = (aux_ang + np.pi) / 2
     return df
 
 def L1_eq(acc_mass, don_mass, sma, r, v):
@@ -340,10 +340,7 @@ def get_table_for_system(macc, mdon, racc, a, e, v_fr, v_rot, v_exp, n, dirname,
     T = 2 * np.pi * np.sqrt((a**3) / (constants.G * (macc + mdon)))
     
     # Get orbit data
-    #orbit_df = orbit_data(a, e, macc + mdon, 0, n)    # dataframe with theta, r, v and angle
     orbit_df = orbit_data(a, e, macc + mdon, T, 0, n)    # dataframe with theta, r, v and angle
-    
-    #print(orbit_df['v [km s-1]'].iloc[0])
     
     for i in orbit_df.index.to_list():
         #print('AAA\n', orbit_df.iloc[i])
@@ -502,7 +499,8 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
     Evolves a system over time until at least one of three conditions is met:
         1. Donor star looses its envelope
         2. Donor is too far to fill its roche lobe
-        3. Iteration reaches 999 999 steps
+        3. a = 0 (merger)
+        4. Iteration reaches 999 999 steps
     This function takes the following input
     :macc_i:    Initial mass of the accretor
     :mdon_i:    Initial mass of the donor
@@ -522,9 +520,6 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
     dirname = './data/{:=04.2f}q_{:=06.2f}a_{:=05.3f}e_{:=04.2f}vfr_{:=04.2f}f_{}mtr_snapshots/'.format(mdon_i/macc_i, a_i.value_in(units.au), e_i, vfr_i, frac, mtr_e)
     if not os.path.exists(dirname): 
         os.makedirs(dirname)
-
-    # Maximum a for RLOF
-
 
     macc = macc_i
     mdon = mdon_i
@@ -582,6 +577,14 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
     r_agb = table.iloc[(table['M [MSun]'] - mdon.value_in(units.MSun)).abs().argsort()[:1]].iloc[0]['R agb [RSun]'] | units.RSun
     amax = a_max_guess(macc, mdon, vfr, r_agb)
 
+    data = {'t [yr]' : [0],
+            'm acc [MSun]' : [macc.value_in(units.MSun)],
+            'dm acc [MSun]' : [0],
+            'm don [MSun]' : [mdon.value_in(units.MSun)],
+            'dm don [MSun]' : [dm_don.value_in(units.MSun)],
+            'a [AU]' : [a.value_in(units.au)]}
+    df_evol_table = pd.DataFrame(data=data)
+    
     if evol_a == False:
         print('Evolving system with initial parameters:\nm_acc = {} MSun,    m_don = {} MSun\nr_acc = {} RSun\na = {} AU,    e = {},    vfr = {}\nmtr = 10^{} MSun/yr,    f_per = {}'.format(macc.value_in(units.MSun), mdon.value_in(units.MSun), racc.value_in(units.RSun), a.value_in(units.au), e, vfr, mtr_e, frac))
         
@@ -624,13 +627,14 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
 
         # Initial angular momentum (must be conserved)
         mu = (macc * mdon) / (macc + mdon)
-        L_orb = (mu * 2 * np.pi * a**2) / T
+        L_orb = (mu * 2 * np.pi * a**2 * (1 - e**2)**0.25) / T
 
         # Iterate untill condition 1 is met
         while (mdon.value_in(units.MSun) > m_core.value_in(units.MSun)):
-            time += T * mul
+            time += T
             print('\tstep {:=06} ({:=011.2f} years)'.format(i, time.value_in(units.yr)))
-            
+            print('\ta = {:=06.3f} au,    macc = {:=06.3f} MSun,    mdon = {:=06.3f} MSun'.format(a.value_in(units.au), macc.value_in(units.MSun), mdon.value_in(units.MSun)))
+            print('\tL = {}'.format(L_orb))
             filename, df = get_table_for_system(macc, mdon, racc, a, e, vfr, v, vexp, n_dat, dirname, frac, mtr_e, i, time)
 
             dm_acc = df.loc[(df['flag impact'] == 1)&(df['new flag'] == 1)]['dm [MSun]'].cumsum().iloc[-1] | units.MSun
@@ -638,29 +642,48 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
             muf = ((macc+dm_acc) * (mdon-dm_don)) / (macc + mdon + dm_acc - dm_don)
             af = (L_orb**2 / (constants.G * (macc + mdon))) * muf**-2
             
-            # If da is not significant enough, assume as constant for 10^x periods
-            if np.abs((af - a).value_in(units.au)) <= 1e-10:
-                x = 1
-                a = a + (af - a) * 10
-            elif (np.abs((af - a).value_in(units.au)) > 1e-10) & (np.abs((af - a).value_in(units.au)) < 1e-2):
-                mag = np.floor(np.log10(np.abs((af - a).value_in(units.au))))
-                x = -2 - mag
-                print('\t\t...Skipping 10^{} periods into the future'.format(x))
-                a = a + (af - a) * 10**x
-            else:
-                x = 0
-                a = af
-            mul = 10**x
+            if np.abs((af - a).value_in(units.au)) < 1e-4:
+                a0 = a
+                si = 1
+                while np.abs((af - a0).value_in(units.au)) < 1e-4:
+                    mdon -= dm_don
+                    macc += dm_acc
+                    T = 2 * np.pi * np.sqrt((a**3) / (constants.G * (macc + mdon)))
+
+                    L_orb = (muf * 2 * np.pi * a**2 * (1 - e**2)**0.25) / T
+
+                    time += T
+                    print('\t\t{:=06} ({:=011.2f} years)'.format(si, time.value_in(units.yr)))
+                    
+                    muf = ((macc+dm_acc) * (mdon-dm_don)) / (macc + mdon + dm_acc - dm_don)
+                    af = (L_orb**2 / (constants.G * (macc + mdon))) * muf**-2
+                    
+                    a = af
+
+                    si += 1
+
+            a  = af
+
+            # Condition 2
+            cond2 = (a.value_in(units.au) >= amax.value_in(units.au))
+            # Condition 3
+            cond3 = (a.value_in(units.au) <= 0.0)
+            # Condition 4
+            cond4 = (i == 999999)
+            # Break if condition 2, 3 or 4 are met
+            if cond2 or cond3 or cond4:
+                break
             
-            mdon -= dm_don * mul
-            macc += dm_acc * mul
+            mdon -= dm_don
+            macc += dm_acc
+            
             T = 2 * np.pi * np.sqrt((a**3) / (constants.G * (macc + mdon)))
 
-            L_orb = (mu * 2 * np.pi * a**2) / T
+            L_orb = (muf * 2 * np.pi * a**2 * (1 - e**2)**0.25) / T
 
             peri = a * (1 - e)
             v = -1 * vel_limit(macc, mdon, racc, peri, a)[1] * vfr
-            print(v.value_in(units.km * units.s**-1))
+            
             if evol_r == True:
                 racc = macc**0.8
 
@@ -669,19 +692,19 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
                 ss_list = open(dirname.split('/')[2]+'.dat', 'a')
                 ss_list.write(filename+'\n')
                 ss_list.close()
+                new_row = pd.Series({'t [yr]' : [time.value_in(units.yr)],
+                                     'm acc [MSun]' : [macc.value_in(units.MSun)],
+                                     'dm acc [MSun]' : [dm_acc.value_in(units.MSun)],
+                                     'm don [MSun]' : [mdon.value_in(units.MSun)],
+                                     'dm don [MSun]' : [dm_don.value_in(units.MSun)],
+                                     'a [AU]' : [a.value_in(units.au)]})
+                pd.concat([df_evol_table, new_row], ignore_index=True)
             elif not save:
                 save = True
 
-            # Break if condition 2 is met
-            if a.value_in(units.au) >= amax.value_in(units.au):
-                print('\tThe donor star can no longer fill its Roche lobe')
-                break
-
-            # Break if condition 3 is met
-            if i == 999999:
-                break
-            
             i += 1
+        
+        df_evol_table.to_csv(dirname+'evolution_table.csv')
     
 
 def new_option_parser():

@@ -1370,6 +1370,72 @@ def spinup_per_period(par_list, L_list, dm_list, dml_list, parname, con1, con2, 
     plt.savefig('./plots/'+filename+'_spin_evol'+su+'.png')
     plt.close()
 
+def spinup_per_period_new(dict_df, tname_list, parname, su):
+    if (dict_df == None) & (len(tname_list) > 0):
+        dict_df = {}
+        for tname in tname_list:
+            df = pd.read_csv('./data/'+tname.split('.dat')[0]+'_evolution_table.csv')
+            dict_df[tname.split('.dat')[0]] = df
+    
+    table = pd.read_table('1_SeBa_radius_short.data', sep="\t", skiprows=1, header=None, index_col=False,
+                         names=['M [MSun]', 'M wd [MSun]', 'R ms [RSun]', 'R hg [RSun]', 'R rgb [RSun]', 'R hb [RSun]', 'R agb [RSun]'])
+    
+    fig, (axis1, axis2, axis3, axis4) = plt.subplots(4, 1, figsize = (4,8), dpi=600, sharex=True)
+    
+    props = {'fontsize': 11}
+    
+    colors = ['firebrick', 'gold', 'limegreen', 'royalblue', 'hotpink']
+    cmap = LinearSegmentedColormap.from_list('mycmap', colors)
+    color = iter(cmap(np.linspace(0, 1, 5)))
+
+    par_list = []
+    for tname, table in dict_df.items():
+        c = next(color)
+        macc = table.iloc[0]['macc [MSun]'] | units.MSun
+        mdon = table.iloc[0]['mdon [MSun]'] | units.MSun
+        if parname == 'a':
+            par = float(tname.split('a')[0].split('_')[-1]) | units.au
+            P = 2 * np.pi * ((par**3)/(constants.G * (macc + mdon)))**0.5
+            label = r'$a_i$ = '+'{} au, '.format(par.value_in(units.au))+r'$P$ = '+'{:=.2f} yr'.format(P.value_in(units.yr))
+        elif parname == 'e':
+            par = float(tname.split('e')[0].split('_')[-1])
+            label = r'$e$ = '+'{}'.format(par)
+        elif parname == 'vfr':
+            par = float(tname.split('vfr')[0].split('_')[-1])
+            label = r'$v_{extra}/v_{per}$ = '+'{}'.format(par)
+        
+        if par.value_in(units.au) == 1.3:
+            zorder = 3
+        else:
+            zorder = 2
+        axis1.plot(table['time [yr]']/10**6, table['macc [MSun]'], label=label, color=c, zorder=zorder)
+        axis2.plot(table['time [yr]']/10**6, table['mdon [MSun]'], label=label, color=c)
+        axis3.plot(table['time [yr]']/10**6, table['v'], label=label, color=c)
+        axis4.plot(table['time [yr]']/10**6, table['a [AU]'], label=label, color=c)
+
+        par_list.append(par.value_in(units.au))
+    
+    pars_str = ''
+    for p in par_list:
+        pars_str + '_{:=06.2f}'.format(p)
+
+    axis3.set_ylabel(r'$\Delta v_{rot} / v_{crit}$', **props)
+    axis1.set_ylabel(r'$M_{acc}$ [$M_{\odot}$]', **props)
+    axis2.set_ylabel(r'$M_{don}$ [$M_{\odot}$]', **props)
+    axis4.set_ylabel(r'$a$ [au]', **props)
+
+    axis4.set_xlabel(r'time [Myr]', **props)
+
+    axis1.ticklabel_format(axis='y', style='plain', useOffset=False)
+    axis1.set_ylim(bottom=0.99995)
+    axis2.set_ylim(top=1.2005)
+
+    axis1.legend(bbox_to_anchor=(0.5, 1.55), loc='upper center', **props)
+
+    plt.subplots_adjust(left=0.25, right=0.95, bottom=0.075, hspace=0)
+    plt.savefig('./plots/'+parname+pars_str+'_evolution'+su+'.png')
+    plt.close()
+
 def envmass_vs_time(dml_list):
     table = pd.read_table('1_SeBa_radius_short.data', sep="\t", skiprows=1, header=None, index_col=False,
                          names=['M [MSun]', 'M wd [MSun]', 'R ms [RSun]', 'R hg [RSun]', 'R rgb [RSun]', 'R hb [RSun]', 'R agb [RSun]'])
@@ -1722,7 +1788,7 @@ def plot_momentum_a(par, df, parname, varname, con1, con2, frac_i, T, su):
 
 if __name__ == "__main__":
     print('ola')
-
+    spinup_per_period_new(None, ['1.20q_001.30a_0.100e_0.90vfr_0.10f_-6mtr_snapshots.dat','1.20q_001.80a_0.100e_0.90vfr_0.10f_-6mtr_snapshots.dat' ,'1.20q_002.20a_0.100e_0.90vfr_0.10f_-6mtr_snapshots.dat'], 'a', '')
 #density_profile(1.2 | mass_unit, 263.648425528 | radius_unit)
 #orbit_example('./a_00_0000e/01_00macc_01_20mdon_0002_50a_00_0000e_-025_16rot', 1 | radius_unit, 400)
 #orbits_example('./v/01_00macc_01_20mdon_0001_00a_00_30e_-056_48rot', 1 | radius_unit, 400, 10)
@@ -1732,5 +1798,5 @@ if __name__ == "__main__":
 
 #plot_larim('./v/01_00macc_01_20mdon_0001_00a_00_30e_-056_48rot', 1 | radius_unit, [20 | time_unit, 40 | time_unit, 60 | time_unit, 80 | time_unit])
 
-df = pd.read_csv('./a_e_0.90_da_table.csv', index_col=0)
-plot_momentum_a(df['a'], df, 'a', 'e', 0.6, 0.90, 0.1, 0 | units.day, '_ai')
+#df = pd.read_csv('./a_e_0.90_da_table.csv', index_col=0)
+#plot_momentum_a(df['a'], df, 'a', 'e', 0.6, 0.90, 0.1, 0 | units.day, '_ai')
