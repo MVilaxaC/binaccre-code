@@ -1,12 +1,10 @@
 import os
-import os.path
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from amuse.units import units, constants, nbody_system
-from amuse.datamodel import Particles, Particle, ParticlesSuperset
+from amuse.units import units, constants
 from amuse.units.optparse import OptionParser
 
 from plotting import * #accretion_space, spinup_per_period, angmom_vs_truean, momentum_vs_par, spinup, conservativeness_plot, orbits_example, spinup_comp, orbits_stream, plot_spinup_a, plot_spinup_e, plot_spinup_v, spinup_vs_gm, plot_cons_a, plot_cons_e, plot_cons_v, stream_animation
@@ -14,12 +12,13 @@ import special_plots as sp
 
 def read_file(filename):
     
-    macc = float(((filename.split('/')[-1]).split('macc')[0]).replace('_', '.')) | units.MSun
-    mdon = float((((filename.split('/')[-1]).split('macc_')[-1]).split('mdon')[0]).replace('_', '.')) | units.MSun
-    a = float((((filename.split('/')[-1]).split('mdon_')[-1]).split('a')[0]).replace('_', '.')) | units.au
-    e = float((((filename.split('/')[-1]).split('a_')[-1]).split('e')[0]).replace('_', '.'))
-    v_fr = float((((filename.split('/')[-1]).split('e_')[-1]).split('vfr')[0]).replace('_', '.'))
-    v_extra = float((((filename.split('/')[-1]).split('vfr_')[-1]).split('rot')[0]).replace('_', '.')) | units.km * units.s**(-1)
+    macc = float(((filename.split('/')[-1]).split('macc')[0])) | units.MSun
+    mdon = float((((filename.split('/')[-1]).split('macc_')[-1]).split('mdon')[0])) | units.MSun
+    racc = float((((filename.split('/')[-1]).split('mdon_')[-1]).split('racc')[0])) | units.RSun
+    a = float((((filename.split('/')[-1]).split('racc_')[-1]).split('a')[0])) | units.au
+    e = float((((filename.split('/')[-1]).split('a_')[-1]).split('e')[0]))
+    v_fr = float((((filename.split('/')[-1]).split('e_')[-1]).split('vfr')[0]))
+    v_extra = float((((filename.split('/')[-1]).split('vfr_')[-1]).split('rot')[0])) | units.km * units.s**(-1)
     df = pd.read_csv(filename+'.csv')
     
     return macc, mdon, a, e, v_fr, v_extra, df
@@ -139,13 +138,15 @@ def momentum_mtr(df, racc, T, mtr):
         if len(impact.index) > 0:
             m = (dm_lost.value_in(units.kg) / frac_sum) * impact['fraction']
             dm_gained = m.cumsum().iloc[-1] | units.kg
-
+            '''
             # Temporary solution for error in impact angle
             a_p = impact['a p [AU]']
             e_p = impact['e p']
             theta_imp = 2*np.pi - np.arccos(((a_p * (1 - e_p**2) / racc.value_in(units.au)) - 1) / e_p)
             aux_ang = np.arccos((4*a_p**2 - 4*a_p*racc.value_in(units.au) + 2*racc.value_in(units.au)**2 - 4*(a_p*e_p)**2)/(4*a_p*racc.value_in(units.au) - 2*racc.value_in(units.au)**2))
             ang_imp = (np.pi - aux_ang) / 2
+            '''
+            ang_imp = impact['ang imp [rad]']
 
             v_t = impact['v imp [km s-1]'].astype('float') * np.sin(ang_imp)
             v_r = impact['v imp [km s-1]'].astype('float') * np.cos(ang_imp)
@@ -297,33 +298,33 @@ def comparison(table_list, frac_i, racc, mc, mtr, yn, su):
         e2 = name2.split('e_')[0]
         if e1 != e2:
             varname = 'e'
-            str_range = [0, 6]
+            str_range = [7, 13]
             conname = 'vfr'
         elif e1 == e2:
             varname = 'vfr'
-            str_range = [9, 12]
+            str_range = [16, 19]
             conname = 'e'
     elif parname == 'e':
         a1 = name1.split('a_')[0]
         a2 = name2.split('a_')[0]
         if a1 != a2:
             varname = 'a'
-            str_range = [0, 6]
+            str_range = [7, 13]
             conname = 'vfr'
         elif a1 == a2:
             varname = 'vfr'
-            str_range = [9, 12]
+            str_range = [16, 19]
             conname = 'a'
     elif parname == 'vfr':
         a1 = name1.split('a_')[0]
         a2 = name2.split('a_')[0]
         if a1 != a2:
             varname = 'a'
-            str_range = [0, 6]
+            str_range = [7, 13]
             conname = 'e'
         elif a1 == a2:
             varname = 'e'
-            str_range = [9, 15]
+            str_range = [16, 22]
             conname = 'a'
     
     df_plotting = pd.DataFrame()
@@ -335,7 +336,7 @@ def comparison(table_list, frac_i, racc, mc, mtr, yn, su):
         table = pd.read_table(t, header=None, names=['filenames'])
         L_list, dv_list, par_list, mg_list, da_list, escape_list= [[], [], [], [], [], []]
         for f in table['filenames']:
-            macc, mdon, a, e, v_fr, v_extra, df = read_file('./data/'+t.split('.')[0]+'/'+f)
+            macc, mdon, a, e, v_fr, v_extra, df = read_file('./data/'+t.split('.dat')[0]+'/'+f)
             df_frac = add_fraction(df, frac_i, yn)
             
             T = 2 * np.pi * np.sqrt((a**3) / (constants.G * (macc + mdon)))
@@ -383,7 +384,7 @@ def comparison(table_list, frac_i, racc, mc, mtr, yn, su):
             df_escape[parname] = par_list
             f = 1
         
-        colname = '{:04.2f}'.format(float(t.split(parname+'_')[1][str_range[0]:str_range[1]+1].replace('_', '.')))
+        colname = '{:04.2f}'.format(float(t.split(parname+'_')[1][str_range[0]:str_range[1]+1]))
         print(t, colname)
         #colname = t
         df_plotting[colname] = dv_list
@@ -400,10 +401,10 @@ def comparison(table_list, frac_i, racc, mc, mtr, yn, su):
     elif conname == 'vfr':
         constant = v_fr
     
-    #df_plotting.to_csv(parname+'_'+varname+'_{:04.2f}_table.csv'.format(constant))
-    #df_cons.to_csv(parname+'_'+varname+'_{:04.2f}_cons_table.csv'.format(constant))
+    df_plotting.to_csv(parname+'_'+varname+'_{:04.2f}_table.csv'.format(constant))
+    df_cons.to_csv(parname+'_'+varname+'_{:04.2f}_cons_table.csv'.format(constant))
     #df_transf.to_csv(parname+'_'+varname+'_{:04.2f}_da_table.csv'.format(constant))
-    df_escape.to_csv(parname+'_'+varname+'_{:04.2f}_escape_table.csv'.format(constant))
+    #df_escape.to_csv(parname+'_'+varname+'_{:04.2f}_escape_table.csv'.format(constant))
     #spinup_comp(par_list, df_plotting, parname, varname, con1, con2, frac_i, T, '_'+su)
     #sp.plot_spinup_a(par_list, df_plotting, r'$e$ = 0.10, $v_{extra}/v_{per}$ = 0.90', r'$q$', [0.25, 0.50, 0.75, 1.00], su)
     #plot_momentum_a(par_list, df_transf, parname, varname, con1, con2, frac_i, T, su)
@@ -416,6 +417,7 @@ def evolution(dat_list, parname, su, savecsv=True, doplot=True):
         df_plot = pd.DataFrame()
 
         file_table = pd.read_table(datname, header=None, names=['filename'])
+        evol_table = pd.read_csv('./data/'+datname.split('.dat')[0]+'/evolution_table.csv')
         len_ft = len(file_table['filename'])
         
         L = 0 | units.kg * units.m**2 * units.s**-1
@@ -425,11 +427,11 @@ def evolution(dat_list, parname, su, savecsv=True, doplot=True):
         # Read files 0 to -2
         macc_list, mdon_list, a_list, L_list, v_list, T_list = [[], [], [], [], [], []]
         while i < len_ft -1:
-            # Read parameters from file name
-            macc = float(file_table.iloc[i]['filename'].split('macc_')[0].split('_')[-1]) | units.MSun
-            mdon = float(file_table.iloc[i]['filename'].split('mdon_')[0].split('_')[-1]) | units.MSun
+            # Read parameters from file name and evolution table
+            macc = evol_table.iloc[i]['m acc [MSun]'] | units.MSun
+            mdon = evol_table.iloc[i]['m don [MSun]'] | units.MSun
             racc = float(file_table.iloc[i]['filename'].split('racc_')[0].split('_')[-1]) | units.RSun
-            a = float(file_table.iloc[i]['filename'].split('a_')[0].split('_')[-1]) | units.au
+            a = evol_table.iloc[i]['a [AU]'] | units.au
             e = float(file_table.iloc[i]['filename'].split('e_')[0].split('_')[-1])
             vfr = float(file_table.iloc[i]['filename'].split('vfr_')[0].split('_')[-1])
             
@@ -456,9 +458,9 @@ def evolution(dat_list, parname, su, savecsv=True, doplot=True):
             # Period
             P = 2 * np.pi * ((a**3)/(constants.G * (macc + mdon)))**0.5
 
-            time_next = float(file_table.iloc[i+1]['filename'].split('_')[-1].split('yr')[0]) | units.yr
+            time_next = evol_table.iloc[i+1]['t [yr]'] | units.yr
             while T.value_in(units.yr) < time_next.value_in(units.yr):
-                macc_list.append(mass.value_in(units.MSun))
+                macc_list.append(macc.value_in(units.MSun))
                 mdon_list.append(mdon.value_in(units.MSun))
                 a_list.append(a.value_in(units.au))
                 L_list.append(L.value_in(units.kg * units.m**2 * units.s**-1))
@@ -466,9 +468,12 @@ def evolution(dat_list, parname, su, savecsv=True, doplot=True):
                 T_list.append(T.value_in(units.yr))
 
                 L += L_tot
-                mass += dm.cumsum().iloc[-1] | units.MSun
-                v_crit = (constants.G * mass / racc)**0.5
-                v = (L / (racc * mass)) / v_crit
+                
+                macc += evol_table.iloc[i+1]['dm acc [MSun]'] | units.MSun
+                mdon -= evol_table.iloc[i+1]['dm don [MSun]'] | units.MSun
+
+                v_crit = (constants.G * macc / racc)**0.5
+                v = (L / (racc * macc)) / v_crit
                 T += P
         
             i += 1
@@ -487,6 +492,29 @@ def evolution(dat_list, parname, su, savecsv=True, doplot=True):
 
     if doplot == True:
         spinup_per_period_new(dict_df, [], 'a', su)
+
+def evolution_from_table(t_list, racc):
+    
+    dict_df = {}
+    for t_name in t_list:
+        df_plot = pd.DataFrame()
+        
+        table = pd.read_csv(t_name)
+        
+        L = 0 | units.kg * units.m**2 * units.s**-1
+        v = 0
+        T = 0 | units.yr
+        i = 0
+
+        macc_list, mdon_list, a_list, L_list, v_list, T_list = [[], [], [], [], [], []]
+        while i < len(table):
+            # Extract parameters
+            macc = table.iloc[0]['m acc [MSun]'] | units.MSun
+            mdon = table.iloc[0]['m don [MSun]'] | units.MSun
+            #racc = table.iloc[0]['r acc [RSun]'] | units.RSun
+            a = float(t_name.split('a_')[0]) | units.au
+            e = float((t_name.split('a_')[1]).split('e_')[0])
+            vfr = float((t_name.split('e_')[1]).split('vfr_')[0])
 
 
 def new_option_parser():
@@ -531,11 +559,14 @@ def new_option_parser():
                       dest="t12", type="string",
                       default = None,
                       help="two tables to be plotted together (separated by a comma)")
+    result.add_option("--evol",
+                      dest="evol", type="string",
+                      default = None,
+                      help="make evolution plot (separate by a comma)")
     return result
 
 if __name__ == "__main__":
-
-    o, arguments  = new_option_parser().parse_args()
+    o, arguments = new_option_parser().parse_args()
 
     mtr = 10**o.mtrexp | units.MSun * units.yr**(-1)
     
@@ -566,10 +597,11 @@ if __name__ == "__main__":
             fraction(o.tname, o.f, o.racc, None, mtr, o.yn, o.su)
 
     if o.comp != None:
-        #comparison(o.comp.split(','), o.f, o.racc, None, mtr, o.yn, o.su)
-
-        evolution(o.comp.split(','), 'a', o.su)
+        comparison(o.comp.split(','), o.f, o.racc, None, mtr, o.yn, o.su)
     
+    if o.evol != None:
+        evolution(o.evol.split(','), 'a', o.su)
+
     if o.t12 != None:
         tname1, tname2 = o.t12.split(',')
         t1 = pd.read_csv(tname1)

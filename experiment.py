@@ -210,14 +210,12 @@ def impact_new(ap, ep, racc, macc):
     
 
 def get_particle_data(macc, mdon, racc, r_accdon, v_orb, ang_orb, true_an_i, v_extra, v_exp, ndat):
-    #d_L1 = distance_to_L1(macc, mdon, r_accdon)
-    #print('r_L1 = ', d_L1.value_in(units.au), ' AU')
     v_sqr = v_orb**2 + v_extra**2 - 2 * v_orb * np.sqrt(v_extra**2) * np.cos((np.pi / 2) - ang_orb)
     if abs(v_sqr.value_in(units.km**2 * units.s**-2)) <= 1e-10:
         v_sqr = 0 | units.km**2 * units.s**-2
     else:
         v_sqr = v_sqr
-    
+      
     v_fs = v_sqr**0.5 # !!! Run a=3, e=0.1 and print
     
     if v_fs.value_in(units.km * units.s**(-1)) == 0.:
@@ -255,15 +253,13 @@ def get_particle_data(macc, mdon, racc, r_accdon, v_orb, ang_orb, true_an_i, v_e
             v_impact = 0 | units.km * units.s**(-1)
             flag = 0
         else:
-            '''
-            T_p = 2 * np.pi * np.sqrt((a_p**3) / (constants.G * macc))
-            E = 2 * np.arctan(np.sqrt((1 - e_p)/(1 + e_p)) * np.tan(theta_i / 2))
-            tau = - (T_p/(2*np.pi)) * (E - e_p * np.sin(E))
-            
-            df = orbit_data(a_p, e_p, macc, T_p, tau.value_in(units.day), 2*ndat)
-            pre_impact, ang_impact, v_impact, flag = impact_kepler(df, racc)
-            '''
             ang_impact, v_impact, flag = impact_new(a_p, e_p, racc, macc)
+            #print(v_extra.value_in(units.km * units.s**-1), v_orb.value_in(units.km * units.s**-1), ang_orb)
+            # Change sign of impact velocity if parcel orbit is retrograde
+            if (v_orb * np.sin(ang_orb)).value_in(units.km * units.s**-1) > np.abs(v_extra.value_in(units.km * units.s**-1)):
+                ang_impact = ang_impact
+            else:
+                ang_impact = -1 * ang_impact
             
     return d_L1, v_i, ang_v, a_p, e_p, theta_i, flag, v_impact, ang_impact
 
@@ -339,21 +335,41 @@ def get_table_for_system(macc, mdon, racc, a, e, v_fr, v_rot, v_exp, n, dirname,
     
     T = 2 * np.pi * np.sqrt((a**3) / (constants.G * (macc + mdon)))
     
-    # Get orbit data
-    orbit_df = orbit_data(a, e, macc + mdon, T, 0, n)    # dataframe with theta, r, v and angle
     
-    for i in orbit_df.index.to_list():
-        #print('AAA\n', orbit_df.iloc[i])
+    # Special case for circular orbit: Compute 1 orbit and copy for all starting points
+    if e == 0.0:
+        orb_data = {'theta [rad]': np.linspace(0, 2*np.pi, n),
+                    'r [AU]': np.ones(n) * a.value_in(units.au),
+                    'v [km s-1]': np.ones(n) * ((constants.G * (macc + mdon) / a)**0.5).value_in(units.km * units.s**-1),
+                    'angle [rad]': np.ones(n) * (np.pi / 2)}
+        orbit_df = pd.DataFrame(data=orb_data)
         r_L1, v_i, ang_v, a_p, e_p, theta_p_i, flag, v_impact, ang_impact = get_particle_data(macc, mdon, racc,
-                                                                                  orbit_df.iloc[i]['r [AU]'] | units.au,
-                                                                                  orbit_df.iloc[i]['v [km s-1]'] | units.km * units.s**(-1),
-                                                                                  orbit_df.iloc[i]['angle [rad]'],
-                                                                                  orbit_df.iloc[i]['theta [rad]'],
+                                                                                  orbit_df.iloc[0]['r [AU]'] | units.au,
+                                                                                  orbit_df.iloc[0]['v [km s-1]'] | units.km * units.s**(-1),
+                                                                                  orbit_df.iloc[0]['angle [rad]'],
+                                                                                  orbit_df.iloc[0]['theta [rad]'],
                                                                                   v_rot, v_exp, n)
+        for i in orbit_df.index.to_list():
+            df.iloc[i] = [orbit_df.iloc[i]['theta [rad]'], orbit_df.iloc[i]['r [AU]'], orbit_df.iloc[i]['v [km s-1]'], orbit_df.iloc[i]['angle [rad]'],
+                          r_L1.value_in(units.au), v_i.value_in(units.km * units.s**(-1)), ang_v, a_p.value_in(units.au), e_p, theta_p_i,
+                          flag, v_impact.value_in(units.km * units.s**(-1)), ang_impact]
     
-        df.iloc[i] = [orbit_df.iloc[i]['theta [rad]'], orbit_df.iloc[i]['r [AU]'], orbit_df.iloc[i]['v [km s-1]'], orbit_df.iloc[i]['angle [rad]'],
-                      r_L1.value_in(units.au), v_i.value_in(units.km * units.s**(-1)), ang_v, a_p.value_in(units.au), e_p, theta_p_i,
-                      flag, v_impact.value_in(units.km * units.s**(-1)), ang_impact]
+    else:
+        # Get orbit data
+        orbit_df = orbit_data(a, e, macc + mdon, T, 0, n)    # dataframe with theta, r, v and angle
+    
+        for i in orbit_df.index.to_list():
+            #print('AAA\n', orbit_df.iloc[i])
+            r_L1, v_i, ang_v, a_p, e_p, theta_p_i, flag, v_impact, ang_impact = get_particle_data(macc, mdon, racc,
+                                                                                    orbit_df.iloc[i]['r [AU]'] | units.au,
+                                                                                    orbit_df.iloc[i]['v [km s-1]'] | units.km * units.s**(-1),
+                                                                                    orbit_df.iloc[i]['angle [rad]'],
+                                                                                    orbit_df.iloc[i]['theta [rad]'],
+                                                                                    v_rot, v_exp, n)
+        
+            df.iloc[i] = [orbit_df.iloc[i]['theta [rad]'], orbit_df.iloc[i]['r [AU]'], orbit_df.iloc[i]['v [km s-1]'], orbit_df.iloc[i]['angle [rad]'],
+                        r_L1.value_in(units.au), v_i.value_in(units.km * units.s**(-1)), ang_v, a_p.value_in(units.au), e_p, theta_p_i,
+                        flag, v_impact.value_in(units.km * units.s**(-1)), ang_impact]
     
     if (frac != None) & (mtr_e != None):
         df = add_fraction(df, frac)
@@ -415,7 +431,8 @@ def many_systems_a(macc, mdon, racc, a_min, a_max, e, v_fr, v_exp, n_sys, n_dat)
     e_str = '_{:=07.4f}e'.format(e)
     vfr_str = '_{:=04.2f}vfr'.format(v_fr)
     vexp_str = '_{:=06.2f}vexp'.format(v_exp.value_in(units.km*units.s**-1))
-    dirname = './data/a'+e_str+vfr_str+vexp_str+'/'
+    q_str = '_{:=05.2f}q'.format(mdon/macc)
+    dirname = './data/a'+q_str+e_str+vfr_str+vexp_str+'/'
     if not os.path.exists(dirname): 
         os.makedirs(dirname)
     
@@ -439,7 +456,7 @@ def many_systems_a(macc, mdon, racc, a_min, a_max, e, v_fr, v_exp, n_sys, n_dat)
         a_array = np.linspace(a_min.value_in(units.au), a_max.value_in(units.au), n_sys, endpoint=False)
     
     i = 1
-    f = open('a'+e_str+vfr_str+vexp_str+'.dat', 'x')
+    f = open('a'+q_str+e_str+vfr_str+vexp_str+'.dat', 'x')
     for a in a_array:
         peri = (a | units.au) * (1 - e)
         v = -1 * vel_limit(macc, mdon, racc, peri, a | units.au)[1] * v_fr    #Donor rotation velocity as -90% v_orb at periastron
@@ -454,14 +471,15 @@ def many_systems_e(macc, mdon, racc, a, e_min, e_max, v_fr, v_exp, n_sys, n_dat)
     a_str = '_{:=07.3f}a'.format(a.value_in(units.au))
     vfr_str = '_{:=04.2f}vfr'.format(v_fr)
     vexp_str = '_{:=06.2f}vexp'.format(v_exp.value_in(units.km*units.s**-1))
-    dirname = './data/e'+a_str+vfr_str+vexp_str+'/'
+    q_str = '_{:=05.2f}q'.format(mdon/macc)
+    dirname = './data/e'+q_str+a_str+vfr_str+vexp_str+'/'
     if not os.path.exists(dirname): 
         os.makedirs(dirname)
     
     e_array = np.linspace(e_min, e_max, n_sys, endpoint=False)
     
     i = 1
-    f = open('e'+a_str+vfr_str+vexp_str+'.dat', 'x')
+    f = open('e'+q_str+a_str+vfr_str+vexp_str+'.dat', 'x')
     for e in e_array:
         print('Working on system number {} ...'.format(i))
         peri = a * (1 - e)
@@ -476,14 +494,15 @@ def many_systems_v(macc, mdon, racc, a, e, vfr_min, vfr_max, v_exp, n_sys, n_dat
     a_str = '_{:=07.3f}a'.format(a.value_in(units.au))
     e_str = '_{:=07.4f}e'.format(e)
     vexp_str = '_{:=06.2f}vexp'.format(v_exp.value_in(units.km*units.s**-1))
-    dirname = './data/vfr'+a_str+e_str+vexp_str+'/'
+    q_str = '_{:=05.2f}q'.format(mdon/macc)
+    dirname = './data/vfr'+q_str+a_str+e_str+vexp_str+'/'
     if not os.path.exists(dirname): 
         os.makedirs(dirname)
     
     vfr_array = np.linspace(vfr_min, vfr_max, n_sys, endpoint=True)
     
     i = 1
-    f = open('vfr'+a_str+e_str+vexp_str+'.dat', 'x')
+    f = open('vfr'+q_str+a_str+e_str+vexp_str+'.dat', 'x')
     for v_fr in vfr_array:
         peri = a * (1 - e)
         v = -1 * vel_limit(macc, mdon, racc, peri, a)[1] * v_fr
@@ -556,11 +575,11 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
             last_file = f.readline().decode()
         
         i = int(last_file.split('_')[0])
-        time = float(last_file.split('_')[-1].split('yr')[0]) | units.yr
-        macc = float(f.split('macc_')[0].split('_')[1]) + float(f.split('macc_')[0].split('_')[2]) * 1e-4 | units.MSun
+        macc = float(f.split('macc_')[0].split('_')[1]) | units.MSun
         mdon = float(last_file.split('macc_')[1].split('mdon')[0]) | units.MSun
-        a = float(last_file.split('racc_')[1].split('a_')[0]) | units.au
         racc = float(last_file.split('mdon_')[1].split('racc_')[0]) | units.RSun
+        a = float(last_file.split('racc_')[1].split('a_')[0]) | units.au
+        time = float(last_file.split('_')[-1].split('yr')[0]) | units.yr
 
         if i % ss_freq:
             save = False
@@ -627,7 +646,8 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
 
         # Initial angular momentum (must be conserved)
         mu = (macc * mdon) / (macc + mdon)
-        L_orb = (mu * 2 * np.pi * a**2 * (1 - e**2)**0.25) / T
+        #L_orb = (mu * 2 * np.pi * a**2 * (1 - e**2)**0.25) / T
+        L_orb = mu * (constants.G * (macc + mdon) * a * (1 - e**2))**0.5
 
         # Iterate untill condition 1 is met
         while (mdon.value_in(units.MSun) > m_core.value_in(units.MSun)):
@@ -639,6 +659,8 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
 
             dm_acc = df.loc[(df['flag impact'] == 1)&(df['new flag'] == 1)]['dm [MSun]'].cumsum().iloc[-1] | units.MSun
             
+            ###########
+
             muf = ((macc+dm_acc) * (mdon-dm_don)) / (macc + mdon + dm_acc - dm_don)
             af = (L_orb**2 / (constants.G * (macc + mdon))) * muf**-2
             
@@ -648,21 +670,23 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
                 while np.abs((af - a0).value_in(units.au)) < 1e-4:
                     mdon -= dm_don
                     macc += dm_acc
-                    T = 2 * np.pi * np.sqrt((a**3) / (constants.G * (macc + mdon)))
 
-                    L_orb = (muf * 2 * np.pi * a**2 * (1 - e**2)**0.25) / T
+                    T = 2 * np.pi * np.sqrt((af**3) / (constants.G * (macc + mdon)))
 
+                    dm_don = mtr * T
+
+                    #L_orb = (muf * 2 * np.pi * af**2 * (1 - e**2)**0.25) / T
+                    L_orb = muf * (constants.G * (macc + mdon) * af * (1 - e**2))**0.5
+                    ##########
                     time += T
                     print('\t\t{:=06} ({:=011.2f} years)'.format(si, time.value_in(units.yr)))
                     
                     muf = ((macc+dm_acc) * (mdon-dm_don)) / (macc + mdon + dm_acc - dm_don)
                     af = (L_orb**2 / (constants.G * (macc + mdon))) * muf**-2
-                    
-                    a = af
 
                     si += 1
 
-            a  = af
+            a = af
 
             # Condition 2
             cond2 = (a.value_in(units.au) >= amax.value_in(units.au))
@@ -679,7 +703,10 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
             
             T = 2 * np.pi * np.sqrt((a**3) / (constants.G * (macc + mdon)))
 
-            L_orb = (muf * 2 * np.pi * a**2 * (1 - e**2)**0.25) / T
+            dm_don = mtr * T
+
+            #L_orb = (muf * 2 * np.pi * a**2 * (1 - e**2)**0.25) / T
+            L_orb = muf * (constants.G * (macc + mdon) * a * (1 - e**2))**0.5
 
             peri = a * (1 - e)
             v = -1 * vel_limit(macc, mdon, racc, peri, a)[1] * vfr
@@ -692,20 +719,19 @@ def system_evol(macc_i, mdon_i, racc_i, a_i, e_i, vfr_i, vexp_i, frac, mtr_e, n_
                 ss_list = open(dirname.split('/')[2]+'.dat', 'a')
                 ss_list.write(filename+'\n')
                 ss_list.close()
-                new_row = pd.Series({'t [yr]' : [time.value_in(units.yr)],
-                                     'm acc [MSun]' : [macc.value_in(units.MSun)],
-                                     'dm acc [MSun]' : [dm_acc.value_in(units.MSun)],
-                                     'm don [MSun]' : [mdon.value_in(units.MSun)],
-                                     'dm don [MSun]' : [dm_don.value_in(units.MSun)],
-                                     'a [AU]' : [a.value_in(units.au)]})
-                pd.concat([df_evol_table, new_row], ignore_index=True)
+                new_row = pd.Series({'t [yr]' : time.value_in(units.yr),
+                                     'm acc [MSun]' : macc.value_in(units.MSun),
+                                     'dm acc [MSun]' : dm_acc.value_in(units.MSun),
+                                     'm don [MSun]' : mdon.value_in(units.MSun),
+                                     'dm don [MSun]' : dm_don.value_in(units.MSun),
+                                     'a [AU]' : a.value_in(units.au)})
+                df_evol_table = pd.concat([df_evol_table, new_row.to_frame().T], ignore_index=True)
+                df_evol_table.to_csv(dirname+'evolution_table.csv')
             elif not save:
                 save = True
 
             i += 1
-        
-        df_evol_table.to_csv(dirname+'evolution_table.csv')
-    
+            
 
 def new_option_parser():
     result = OptionParser()
@@ -799,26 +825,27 @@ def new_option_parser():
                       help="number of systems to be generated (modes a and e)")
     return result
 
-o, arguments  = new_option_parser().parse_args()
+if __name__ == "__main__":
+    o, arguments = new_option_parser().parse_args()
+    print(o, arguments)
+    #print(np.linspace(o.emin, o.emax, o.n_sys, endpoint=False)[61])
 
-#print(np.linspace(o.emin, o.emax, o.n_sys, endpoint=False)[61])
 
+    if not os.path.exists('./data/'):
+        os.makedirs('./data/')
 
-if not os.path.exists('./data/'):
-    os.makedirs('./data/')
-
-if o.mode == 's':
-    peri = o.a * (1 - o.e)
-    v = -1 * vel_limit(o.macc, o.mdon, o.racc, peri, o.a)[1] * o.v_fr
-    filename, x = get_table_for_system(o.macc, o.mdon, o.racc, o.a, o.e, o.v_fr, v, o.v_rad, o.n_dat, './data/')
-    x.to_csv('./data/'+filename+'.csv')
-elif o.mode == 'a':
-    many_systems_a(o.macc, o.mdon, o.racc, o.amin, o.amax, o.e, o.v_fr, o.v_rad, o.n_sys, o.n_dat)
-elif o.mode == 'e':
-    many_systems_e(o.macc, o.mdon, o.racc, o.a, o.emin, o.emax, o.v_fr, o.v_rad, o.n_sys, o.n_dat)
-elif o.mode == 'v':
-    many_systems_v(o.macc, o.mdon, o.racc, o.a, o.e, o.v_fr_min, o.v_fr_max, o.v_rad, o.n_sys, o.n_dat)
-elif o.mode == 'evolve':
-    system_evol(o.macc, o.mdon, o.racc, o.a, o.e, o.v_fr, o.v_rad, o.frac, o.mtr, o.n_dat, o.ssf, o.eva, o.evr)
-else:
-    print('Invalid mode. Please try again :/')
+    if o.mode == 's':
+        peri = o.a * (1 - o.e)
+        v = -1 * vel_limit(o.macc, o.mdon, o.racc, peri, o.a)[1] * o.v_fr
+        filename, x = get_table_for_system(o.macc, o.mdon, o.racc, o.a, o.e, o.v_fr, v, o.v_rad, o.n_dat, './data/')
+        x.to_csv('./data/'+filename+'.csv')
+    elif o.mode == 'a':
+        many_systems_a(o.macc, o.mdon, o.racc, o.amin, o.amax, o.e, o.v_fr, o.v_rad, o.n_sys, o.n_dat)
+    elif o.mode == 'e':
+        many_systems_e(o.macc, o.mdon, o.racc, o.a, o.emin, o.emax, o.v_fr, o.v_rad, o.n_sys, o.n_dat)
+    elif o.mode == 'v':
+        many_systems_v(o.macc, o.mdon, o.racc, o.a, o.e, o.v_fr_min, o.v_fr_max, o.v_rad, o.n_sys, o.n_dat)
+    elif o.mode == 'evolve':
+        system_evol(o.macc, o.mdon, o.racc, o.a, o.e, o.v_fr, o.v_rad, o.frac, o.mtr, o.n_dat, o.ssf, o.eva, o.evr)
+    else:
+        print('Invalid mode. Please try again :/')

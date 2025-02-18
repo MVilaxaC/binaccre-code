@@ -12,8 +12,9 @@ from mpl_toolkits.axes_grid1.inset_locator import mark_inset
 
 from amuse.units import units, constants
 from amuse.datamodel import Particles, Particle, ParticlesSuperset
-
 from amuse.community.mesa_r2208.interface import MESA
+
+from experiment import distance_to_L1
 
 # Units
 radius_unit = units.RSun
@@ -94,7 +95,7 @@ def orbit_data(a, e, mtot, T, tau, n):
     '''
     Returns trajectory, velocity and it's angle as tangent to the orbit for a set of initial orbital parameters
     '''
-    times = np.linspace(0.0, T.value_in(units.day), n)
+    times = np.linspace(0.0, (T/2).value_in(units.day), int(n/2))
     
     true_an = []
     for t in times:
@@ -110,6 +111,8 @@ def orbit_data(a, e, mtot, T, tau, n):
             true_an.append(theta)
         else:
             true_an.append((2*np.pi)+theta)
+    bottom_half = [2 * np.pi - i for i in true_an[::-1]]
+    true_an = true_an + bottom_half
     r = (a * (1 - e**2)) / (1 + e*np.cos(true_an))
     v_2 = constants.G * mtot * ((2 / r) - (1 / a))
     
@@ -122,7 +125,7 @@ def orbit_data(a, e, mtot, T, tau, n):
     # Angle of velocity (tangent to the orbit)
     for i in df.index.tolist():
         aux_ang = np.arcsin(np.sin(df.iloc[i]['theta [rad]']) * 2 * (a.value_in(units.au) * e) / (2 * a.value_in(units.au) - df.iloc[i]['r [AU]']))
-        df['angle [rad]'][i] = (aux_ang + np.pi) / 2
+        df.loc[i, 'angle [rad]'] = (aux_ang + np.pi) / 2
     
     return df
 
@@ -1406,10 +1409,12 @@ def spinup_per_period_new(dict_df, tname_list, parname, su):
         
         if par.value_in(units.au) == 1.3:
             zorder = 3
-        else:
+        elif par.value_in(units.au) == 1.8:
             zorder = 2
+        else:
+            zorder = 1
         axis1.plot(table['time [yr]']/10**6, table['macc [MSun]'], label=label, color=c, zorder=zorder)
-        axis2.plot(table['time [yr]']/10**6, table['mdon [MSun]'], label=label, color=c)
+        axis2.plot(table['time [yr]']/10**6, table['mdon [MSun]'], label=label, color=c, zorder=zorder)
         axis3.plot(table['time [yr]']/10**6, table['v'], label=label, color=c)
         axis4.plot(table['time [yr]']/10**6, table['a [AU]'], label=label, color=c)
 
@@ -1428,7 +1433,8 @@ def spinup_per_period_new(dict_df, tname_list, parname, su):
 
     axis1.ticklabel_format(axis='y', style='plain', useOffset=False)
     axis1.set_ylim(bottom=0.99995)
-    axis2.set_ylim(top=1.2005)
+    axis2.ticklabel_format(axis='y', style='plain', useOffset=False)
+    axis2.set_ylim(top=1.20005)
 
     axis1.legend(bbox_to_anchor=(0.5, 1.55), loc='upper center', **props)
 
@@ -1436,17 +1442,6 @@ def spinup_per_period_new(dict_df, tname_list, parname, su):
     plt.savefig('./plots/'+parname+pars_str+'_evolution'+su+'.png')
     plt.close()
 
-def envmass_vs_time(dml_list):
-    table = pd.read_table('1_SeBa_radius_short.data', sep="\t", skiprows=1, header=None, index_col=False,
-                         names=['M [MSun]', 'M wd [MSun]', 'R ms [RSun]', 'R hg [RSun]', 'R rgb [RSun]', 'R hb [RSun]', 'R agb [RSun]'])
-    print(dml_list)
-    '''
-    for:
-        m_env = mdon - (table.iloc[(table['M [MSun]'] - mdon.value_in(mass_unit)).abs().argsort()[:1]].iloc[0]['M wd [MSun]'] | mass_unit)
-        t = 0
-        while m_env > 0:
-            m_env - 
-    '''
 
 def angmom_vs_truean(filename, L, L_m, theta, yn):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize = (4,6), dpi=300, layout='constrained', sharex=True)
@@ -1503,6 +1498,7 @@ def momentum_comp(df, parname, cons1, cons2, yn, su):
 
     plt.savefig('./plots/momentum_truean_'+yn+su+'.png')
 
+
 def plot_cons_a(te, tv, econ, vcon, su):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize = (6,4), dpi=600, sharey=True)
     
@@ -1520,7 +1516,7 @@ def plot_cons_a(te, tv, econ, vcon, su):
         c = next(color)
         ax1.plot(te['a'], te[e], color=c, label = r'$e$ = '+e)
     ax1.legend(loc='center left', handlelength=1, **props)
-    ax1.text(te['a'].iloc[0], 0.925, r'$v_{extra} / v_{per}$ = '+vcon, alpha=0.5, **props)
+    ax1.text(te['a'].iloc[0], 0.925, r'$v_{extra} / v_{per}$'+' = {:=05.2f}'.format(vcon), alpha=0.5, **props)
     
     ### Right (vfr) panel ###
     
@@ -1530,7 +1526,7 @@ def plot_cons_a(te, tv, econ, vcon, su):
     ax2.set_xlabel('$a$ [AU]', **props)
     for v in tv.columns[2:]:
         c = next(color)
-        ax2.plot(tv['a'], tv[v], color=c, label = r'$v_{extra} / v_{per}$ = '+v)
+        ax2.plot(tv['a'], tv[v], color=c, label = r'$v_{extra} / v_{per}$'+' = {:=05.2f}'.format(vcon))
     ax2.legend(loc='center left', handlelength=1, **props)
     ax2.text(tv['a'].iloc[0], 0.925, r'$e$ = '+econ, alpha=0.5, **props)
     
@@ -1559,7 +1555,7 @@ def plot_cons_e(ta, tv, acon, vcon, su):
             lstyle = 'solid'
         ax1.plot(ta['e'], ta[a], color=c, label = r'$a$ = '+a+' AU', linestyle=lstyle)
     ax1.legend(loc='center right', handlelength=1, **props)
-    ax1.text(0.05, 0.05, r'$v_{extra} / v_{per}$ = '+vcon, alpha=0.5, **props)
+    ax1.text(0.05, 0.05, r'$v_{extra} / v_{per}$'+' = {:=05.2f}'.format(vcon), alpha=0.5, **props)
     
     ### Right (vfr) panel ###
     
@@ -1573,7 +1569,7 @@ def plot_cons_e(ta, tv, acon, vcon, su):
             lstyle = 'dotted'
         else:
             lstyle = 'solid'
-        ax2.plot(tv['e'], tv[v], color=c, label = r'$v_{extra} / v_{per}$ = '+v, linestyle=lstyle)
+        ax2.plot(tv['e'], tv[v], color=c, label = r'$v_{extra} / v_{per}$'+' = {:=05.2f}'.format(vcon), linestyle=linestyle)
     ax2.legend(loc='center left', handlelength=1, **props)
     ax2.text(0.05, 0.05, r'$a$ = '+acon+' AU', alpha=0.5, **props)
     
@@ -1595,24 +1591,27 @@ def plot_cons_v(ta, te, acon, econ, su):
     ax1.set_xlabel('$v_{extra} / v_{per}$', **props)
     ax1.set_ylabel(r'$| dm_{acc} / dm_{don} |$', **props)
     for a in ta.columns[2:]:
+        vfr, vzero = correction(ta['vfr'], float(a), 1.2)
         c = next(color)
-        ax1.plot(ta['vfr'], ta[a], color=c, label = r'$a$ = '+a+' AU')
+        ax1.plot(vfr, ta[a], color=c, label = r'$a$ = '+a+' AU')
     ax1.legend(loc=4, handlelength=1, **props)
-    ax1.text(ta['vfr'].iloc[0], 0.95, r'$e$ = '+econ, alpha=0.5, **props)
-    ax1.set_xlim(right=1.015)
+    ax1.text(1.925, 0.225, r'$e$ = '+econ, alpha=0.5, **props)
+    #ax1.set_xlim(right=1.225)
     
     ### Right (e) panel ###
     
     cmap = LinearSegmentedColormap.from_list('mycmap', colors)
     color = iter(cmap(np.linspace(0, 1, 5)))
     
+    vfr, vzero = correction(te['vfr'], float(a), 1.2)
+
     ax2.set_xlabel('$v_{extra} / v_{per}$', **props)
     for e in te.columns[2:]:
         c = next(color)
-        ax2.plot(te['vfr'], te[e], color=c, label = r'$e$ = '+e)
+        ax2.plot(vfr, te[e], color=c, label = r'$e$ = '+e)
     ax2.legend(loc=4, handlelength=1, **props)
-    ax2.text(te['vfr'].iloc[0]-0.005, 0.95, r'$a$ = '+acon+' AU', alpha=0.5, **props)
-    ax2.set_xlim(left=0.785)
+    ax2.text(1.885, 0.375, r'$a$ = '+acon+' AU', alpha=0.5, **props)
+    #ax2.set_xlim(left=0.775)
     
     plt.subplots_adjust(left=0.09, right=0.99, top=0.95, wspace=0)
     plt.savefig('./plots/vfr_dependence_cons'+su+'.png')
@@ -1694,7 +1693,7 @@ def plot_spinup_v(ta, te, acon, econ, su):
     
     props = {'fontsize': 11}
     colors = ['firebrick', 'gold', 'limegreen', 'royalblue', 'hotpink']
-    
+
     ### Left (a) panel ###
     
     cmap = LinearSegmentedColormap.from_list('mycmap', colors)
@@ -1703,24 +1702,32 @@ def plot_spinup_v(ta, te, acon, econ, su):
     ax1.set_xlabel('$v_{extra} / v_{per}$', **props)
     ax1.set_ylabel(r'$\Delta v_{rot} / v_{crit}$', **props)
     for a in ta.columns[2:]:
+        # Apply correction to vfr
+        vfr, vzero = correction(ta['vfr'], float(a), 1.2)
+
         c = next(color)
-        ax1.plot(ta['vfr'], ta[a], color=c, label = r'$a$ = '+a+' AU')
+        ax1.plot(vfr, ta[a], color=c, label = r'$a$ = '+a+' AU')
     ax1.legend(loc=2, handlelength=1, **props)
-    ax1.text(0.95, 2.25e-7, r'$e$ = '+econ, alpha=0.5, **props)
-    ax1.set_xlim(right=1.015)
+    ax1.text(1.9, 2.25e-7, r'$e$ = '+econ, alpha=0.5, **props)
+    #ax1.text(0.95, 2.25e-7, r'$e$ = '+econ, alpha=0.5, **props)
+    #ax1.set_xlim(right=1.015)
     
     ### Right (e) panel ###
     
     cmap = LinearSegmentedColormap.from_list('mycmap', colors)
     color = iter(cmap(np.linspace(0, 1, 5)))
     
+    # Apply correction to vfr
+    vfr, vzero = correction(te['vfr'], float(acon), 1.2)
+
     ax2.set_xlabel('$v_{extra} / v_{per}$', **props)
     for e in te.columns[2:]:
         c = next(color)
-        ax2.plot(te['vfr'], te[e], color=c, label = r'$e$ = '+e)
+        ax2.plot(vfr, te[e], color=c, label = r'$e$ = '+e)
     ax2.legend(loc=2, handlelength=1, **props)
-    ax2.text(0.925, 2.25e-7, r'$a$ = '+acon+' AU', alpha=0.5, **props)
-    ax2.set_xlim(left=0.785)
+    ax2.text(1.9, 2.25e-7, r'$a$ = '+acon+' AU', alpha=0.5, **props)
+    #ax2.text(0.925, 2.25e-7, r'$a$ = '+acon+' AU', alpha=0.5, **props)
+    #ax2.set_xlim(left=0.785)
     
     plt.subplots_adjust(left=0.09, right=0.99, top=0.95, wspace=0)
     plt.savefig('./plots/vfr_dependence'+su+'.png')
@@ -1785,18 +1792,315 @@ def plot_momentum_a(par, df, parname, varname, con1, con2, frac_i, T, su):
     plt.savefig('./plots/'+filename+'_da'+su+'.png')
     plt.close()
 
+def compare_with_3body_spin(two_df_name, three_df_list):
+    props = {'fontsize': 11}
+
+    colors = ['firebrick', 'gold', 'limegreen']
+    cmap = LinearSegmentedColormap.from_list('mycmap', colors)
+    color = iter(cmap(np.linspace(0, 1, 3)))
+    
+    fig, ax = plt.subplots(figsize = (6,4), dpi=600)
+    
+    two_df = pd.read_csv(two_df_name, index_col=0)
+    #for i in range(1, 2):
+    for i in range(1, two_df.shape[1]):
+        print(i)
+        c = next(color)
+        three_df = pd.read_csv(three_df_list[i-1])
+        # Plot 2 body curve
+        ax.plot(two_df.iloc[:, 0], two_df.iloc[:, i], color=c)
+        # Plot 3 body curve
+        ax.plot(three_df['vfr'], -1*three_df['dv'], color=c, linestyle='dashed')
+
+    ax.set_xlabel('$v_{extra} / v_{per}$', **props)
+    ax.set_ylabel(r'$\Delta v_{rot} / v_{crit}$', **props)
+
+    #plt.show()
+    plt.savefig('./plots/3body_comparison.png')
+    plt.close()
+
+def compare_with_3body_impact(two_df_list, three_df_list, su):
+    props = {'fontsize': 11}
+
+    colors = ['firebrick', 'gold', 'limegreen']
+    cmap = LinearSegmentedColormap.from_list('mycmap', colors)
+    color = iter(cmap(np.linspace(0, 1, 3)))
+    
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize = (6,4), dpi=600, sharex=True)
+
+    for i in range(0, len(two_df_list)):
+        print(i)
+        
+        c = next(color)
+
+        # 2 body
+        two_files = pd.read_table(two_df_list[i], header=None, names=['filenames'])
+        vfr_list, v_list, ang_list = [[], [], []]
+        for filename in two_files['filenames']:
+            two_df = pd.read_csv('./data/'+two_df_list[i].split('.dat')[0]+'/'+filename+'.csv')
+            vfr_list.append(float((filename.split('e_')[1]).split('vfr_')[0]))
+            if two_df.iloc[0]['flag impact'] == 1:
+                v_list.append(two_df.iloc[0]['v imp [km s-1]'])
+                ang_list.append(two_df.iloc[0]['ang imp [rad]'] / np.pi)
+            else:
+                v_list.append(np.nan)
+                ang_list.append(np.nan)
+        
+        # Get some data
+        a = float((two_df_list[i].split('q_')[1]).split('a_')[0]) | units.au
+        macc = float(filename.split('macc_')[0]) | units.MSun
+        mdon = float((filename.split('macc_')[1]).split('mdon_')[0]) | units.MSun
+
+        '''
+        # Compute velocity for synchronicity
+        omega = (constants.G * (macc + mdon) / a**3)**0.5
+        v = (1 - np.linspace(0.8, 4.5, 200)) * omega * a
+        rL1 = [distance_to_L1(macc, mdon, a, x) for x in v]
+        rdon = [a - x for x in rL1]
+        v_synch = [omega * x for x in rdon]
+        #print(v_synch)
+        ax3 = ax1.twiny()
+        ax2.plot(v_synch, np.full(len(v_synch), np.nan))
+        '''
+        
+        # Plot 2 body curves
+        label = r'$a$ = '+'{:=05.2f} au'.format(a.value_in(units.au))
+        ax1.plot(vfr_list, v_list, color=c, label=label)
+        ax2.plot(vfr_list, ang_list, color=c)
+
+        # 3 body
+        three_df = pd.read_csv(three_df_list[i])
+        P = (2 * np.pi * ((a**3) / (constants.G * (macc + mdon)))**0.5).value_in(units.hour)
+        truean = three_df['t [hour]'] * 2 * np.pi / P
+
+        x = three_df['x [RSun]'] * np.cos(truean)
+        y = three_df['y [RSun]'] * np.cos(truean)
+        r = (x**2 + y**2)**0.5
+        omega = ((constants.G * (macc + mdon) / a**3)**0.5).value_in(units.s**-1)
+        vx = three_df['vx [km s-1]'] + (-1 * three_df['y [RSun]'] * 695700) * omega
+        vy = three_df['vy [km s-1]'] + (three_df['x [RSun]'] * 695700) * omega
+        v = (vx**2 + vy**2)**0.5
+        #ang_imp = np.arccos((r**2 + y**2 - x**2)/(2*r*y)) - np.arccos(vy/v)
+        ang_imp = np.arccos(y/r) + np.arccos(vy/v) - np.pi
+
+        # Plot 3 body curves
+        ax1.scatter(three_df['vfr'], v.replace(0, np.nan), color=c, s=1)#, linestyle='dashed')
+        ax2.scatter(three_df['vfr'], ang_imp / np.pi, color=c, s=1)#, linestyle='dashed')
+    
+
+    ax1.set_ylabel(r'$v_{imp}$ [km s-1]', labelpad=7, **props)
+    ax2.set_ylabel(r'$\alpha_{imp}$ [$\pi$ rad]', labelpad=-2, **props)
+    ax2.set_xlabel('$v_{extra} / v_{per}$', **props)
+    ax2.hlines(0.0, xmin=vfr_list[0], xmax=three_df.iloc[-1]['vfr'], color='k')
+    
+    ax1.set_xlim(left=vfr_list[0], right=4.5)#three_df.iloc[-1]['vfr'])
+    ax1.legend(loc=1, **props)
+
+    plt.subplots_adjust(hspace=0, right=0.95, top=0.95)
+    plt.savefig('./plots/3body_comparison_impact'+su+'.png')
+    plt.close()
+
+    if not os.path.exists('./data/{:=05.3f}q_{:=06.3f}a_2body.csv'.format(mdon/macc, a.value_in(units.au))):
+        data2 = {'vfr' : vfr_list, 'v imp [km s-1]' : v_list, 'ang imp [pi rad]' : ang_list}
+        df2 = pd.DataFrame(data=data2)
+        df2.to_csv('./data/{:=05.3f}q_{:=06.3f}a_2body.csv'.format(mdon/macc, a.value_in(units.au)))
+
+    if not os.path.exists('./data/{:=05.3f}q_{:=06.3f}a_3body.csv'.format(mdon/macc, a.value_in(units.au))):
+        data3 = {'vfr' : three_df['vfr'].to_list(), 'v imp [km s-1]' : v.replace(0, np.nan).to_list(), 'ang imp [pi rad]' : (ang_imp / np.pi).to_list()}
+        df3 = pd.DataFrame(data=data3)
+        df3.to_csv('./data/{:=05.3f}q_{:=06.3f}a_3body.csv'.format(mdon/macc, a.value_in(units.au)))
+
+def correction(vfr, a, q):
+    A3b = ((0.040404 * q - 0.020202) * a**2
+           + (-0.181818 * q + 0.070707) * a
+           + (0.467070 * q - 0.162828))
+    A = ((0.02095238 * q**2 - 0.04701587 * q + 0.03555) * a**2
+         + (-0.06952381 * q**2 + 0.15649206 * q - 0.15222) * a
+         + (0.04925714 * q**2 - 0.11135429 * q + 0.2508))
+    vzero = ((-0.02162484 * a**2 + 0.06286028 * a + 0.05295173) * q**2
+             + (0.03202641 * a**2 - 0.0909287 * a + 1.02136945) * q
+             + (-0.01422374 * a**2 + 0.06100643 * a + 0.70129542))
+    vcorr = (A3b/A) * (vfr - 1) + vzero
+    return vcorr, vzero
+
+def compare_correction(two_df_list, three_df_list, su):
+    props = {'fontsize': 11}
+
+    colors = ['firebrick', 'gold', 'limegreen']
+    cmap = LinearSegmentedColormap.from_list('mycmap', colors)
+    color = iter(cmap(np.linspace(0, 1, 3)))
+    
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize = (4,6), dpi=600, sharex=True)
+
+    for i in range(0, len(two_df_list)):
+        print(i)
+        
+        c = next(color)
+
+        # 2 body
+        two_files = pd.read_table(two_df_list[i], header=None, names=['filenames'])
+        vfr_list, v_list, ang_list = [[], [], []]
+        for filename in two_files['filenames']:
+            two_df = pd.read_csv('./data/'+two_df_list[i].split('.dat')[0]+'/'+filename+'.csv')
+            vfr_list.append(float((filename.split('e_')[1]).split('vfr_')[0]))
+            if two_df.iloc[0]['flag impact'] == 1:
+                v_list.append(two_df.iloc[0]['v imp [km s-1]'])
+                ang_list.append(two_df.iloc[0]['ang imp [rad]'] / np.pi)
+            else:
+                v_list.append(np.nan)
+                ang_list.append(np.nan)
+
+        # Get some data
+        a = float((two_df_list[i].split('q_')[1]).split('a_')[0]) | units.au
+        macc = float(filename.split('macc_')[0]) | units.MSun
+        mdon = float((filename.split('macc_')[1]).split('mdon_')[0]) | units.MSun
+
+        # Correct vfr_list
+        vfr_corr, v_zero = correction(np.array(vfr_list), a.value_in(units.au), mdon/macc)
+
+        # Plot 2 body curves
+        label = r'$a$ = '+'{:=05.2f} au'.format(a.value_in(units.au))
+        ax1.plot(vfr_corr, v_list, color=c, label=label)
+        ax2.plot(vfr_corr, ang_list, color=c)
+
+        # 3 body
+        three_df = pd.read_csv(three_df_list[i])
+        P = (2 * np.pi * ((a**3) / (constants.G * (macc + mdon)))**0.5).value_in(units.hour)
+        truean = three_df['t [hour]'] * 2 * np.pi / P
+
+        x = three_df['x [RSun]'] * np.cos(truean)
+        y = three_df['y [RSun]'] * np.cos(truean)
+        r = (x**2 + y**2)**0.5
+        omega = ((constants.G * (macc + mdon) / a**3)**0.5).value_in(units.s**-1)
+        vx = three_df['vx [km s-1]'] + (-1 * three_df['y [RSun]'] * 695700) * omega
+        vy = three_df['vy [km s-1]'] + (three_df['x [RSun]'] * 695700) * omega
+        v = (vx**2 + vy**2)**0.5
+        #ang_imp = np.arccos((r**2 + y**2 - x**2)/(2*r*y)) - np.arccos(vy/v)
+        ang_imp = np.arccos(y/r) + np.arccos(vy/v) - np.pi
+
+        # Plot 3 body curves
+        ax1.scatter(three_df.loc[three_df['vfr'] < v_zero]['vfr'], v.replace(0, np.nan).loc[three_df['vfr'] < v_zero], facecolor='none', edgecolor=c, s=10)#, linestyle='dashed')
+        ax2.scatter(three_df.loc[three_df['vfr'] < v_zero]['vfr'], (ang_imp / np.pi).loc[three_df['vfr'] < v_zero], facecolor='none', edgecolor=c, s=10)#, linestyle='dashed')
+    
+
+    ax1.set_ylabel(r'$v_{imp}$ [km s-1]', labelpad=3, **props)
+    ax2.set_ylabel(r'$\alpha_{imp}$ [$\pi$ rad]', labelpad=2, **props)
+    ax2.set_xlabel('$v_{extra} / v_{per}$', **props)
+    #ax2.hlines(0.0, xmin=vfr_list[0], xmax=three_df.iloc[-1]['vfr'], color='k')
+    
+    ax1.set_xlim(left=1.7, right=2.2)
+    ax2.set_ylim(bottom=0)
+    ax1.legend(loc=1, **props)
+
+    plt.subplots_adjust(hspace=0, left=0.15, right=0.975, top=0.975)
+    plt.savefig('./plots/3body_comparison_corrected'+su+'.png')
+    plt.close()
+
+def plot_trajectories(two_file, three_file):
+    two_df = pd.read_csv(two_file)
+    three_df = pd.read_csv(three_file)
+
+    # Get data from 2body filename
+    name = two_file.split('/')[-1]
+    macc = float(name.split('macc_')[0]) | units.MSun
+    mdon = float((name.split('macc_')[1]).split('mdon_')[0]) | units.MSun
+    racc = float((name.split('mdon_')[1]).split('racc_')[0]) | units.RSun
+    a = float((name.split('racc_')[1]).split('a_')[0]) | units.au
+    vfr = float((name.split('e_')[1]).split('vfr_')[0])
+
+    fig, axs = plt.subplots(2, 2, figsize = (6,6), dpi=600)
+
+    fig.suptitle(r'$a$'+' = {:=05.2f} au, '.format(a.value_in(units.au))+r'$v_{extra}/v_{per}$'+' = {:=05.2f}'.format(vfr))
+
+    ### Plot 2 body trajectory ###
+    a_p = two_df.iloc[0]['a p [AU]'] | units.au
+    e_p = two_df.iloc[0]['e p']
+    theta_i = two_df.iloc[0]['theta p i [rad]']
+    
+    T_p = 2 * np.pi * np.sqrt((a_p**3) / (constants.G * macc))
+    E = 2 * np.arctan(np.sqrt((1 - e_p)/(1 + e_p)) * np.tan(theta_i / 2))
+    tau = - (T_p/(2*np.pi)) * (E - e_p * np.sin(E))
+    particle = orbit_data(a_p, e_p, macc, T_p, tau, len(two_df))
+    
+    x_p = particle['r [AU]'] * np.cos(particle['theta [rad]'] - particle['theta [rad]'].iloc[0])
+    y_p = particle['r [AU]'] * np.sin(particle['theta [rad]'] - particle['theta [rad]'].iloc[0])
+    
+    if two_df.iloc[0]['flag impact'] == 0.0:
+        x2 = x_p * 215.032
+        y2 = y_p * 215.032
+        linestyle = 'dashed'
+        alpha = 0.5
+    else:
+        x2 = x_p * 215.032
+        y2 = y_p * 215.032
+        linestyle = 'solid'
+        alpha = 1.
+
+    axs[0,0].plot(x2, y2, alpha=alpha, linestyle=linestyle)
+    axs[0,0].set_xlim(left=-1.25*x2.iloc[0], right=1.25*x2.iloc[0])
+    axs[0,0].set_ylim(bottom=-1.25*x2.iloc[0], top=1.25*x2.iloc[0])
+    # Pink dot represents accretor
+    axs[0,0].scatter(0, 0, color='hotpink')
+    # L1 orbit
+    xL1 = x2.iloc[0] * np.cos(particle['theta [rad]'])
+    yL1 = x2.iloc[0] * np.sin(particle['theta [rad]'])
+    axs[0,0].plot(xL1, yL1, linestyle='dotted', color='k')
+    # Axis label
+    axs[0,0].set_ylabel(r'$Y$ [$R_{\odot}$]')
+    
+    axs[0,1].plot(x2, y2, alpha=alpha, linestyle=linestyle)
+    axs[0,1].set_xlim(left=-2*racc.value_in(units.RSun), right=2*racc.value_in(units.RSun))
+    axs[0,1].set_ylim(bottom=-2*racc.value_in(units.RSun), top=2*racc.value_in(units.RSun))
+    accretor = plt.Circle((0,0), racc.value_in(units.RSun), color='hotpink', alpha=0.5, label='accretor star', zorder=3)
+    axs[0,1].add_patch(accretor)
+
+
+    ### Plot 3 body trajectory ###
+    P = (2 * np.pi * ((a**3) / (constants.G * (macc + mdon)))**0.5).value_in(units.minute)
+    truean = three_df['t [min]'] * 2 * np.pi / P
+
+    # Correct for frame rotation
+    x3 = three_df['x [RSun]'] * np.cos(truean) - three_df['y [RSun]'] * np.sin(truean)
+    y3 = three_df['x [RSun]'] * np.sin(truean) + three_df['y [RSun]'] * np.cos(truean)
+    # Compute accretor's position
+    mu = mdon / (macc + mdon)
+    x_acc = -1 * a.value_in(units.RSun) * (mu) * np.cos(truean)
+    y_acc = -1 * a.value_in(units.RSun) * (mu) * np.sin(truean)
+    # Center frame on accretor
+    x3 = x3 - x_acc
+    y3 = y3 - y_acc
+    
+    axs[1,0].plot(x3, y3)
+    axs[1,0].set_xlim(left=-1.25*x3.iloc[0], right=1.25*x3.iloc[0])
+    axs[1,0].set_ylim(bottom=-1.25*x3.iloc[0], top=1.25*x3.iloc[0])
+    # Pink dot represents accretor
+    axs[1,0].scatter(0, 0, color='hotpink')
+    # L1 orbit
+    axs[1,0].plot(xL1, yL1, linestyle='dotted', color='k')
+    # Axis label
+    axs[1,0].set_ylabel(r'$Y$ [$R_{\odot}$]')
+    axs[1,0].set_xlabel(r'$X$ [$R_{\odot}$]')
+
+    axs[1,1].plot(x3, y3)
+    axs[1,1].set_xlim(left=-2*racc.value_in(units.RSun), right=2*racc.value_in(units.RSun))
+    axs[1,1].set_ylim(bottom=-2*racc.value_in(units.RSun), top=2*racc.value_in(units.RSun))
+    accretor = plt.Circle((0,0), racc.value_in(units.RSun), color='hotpink', alpha=0.5, label='accretor star', zorder=3)
+    axs[1,1].add_patch(accretor)
+    # Axis label
+    axs[1,1].set_xlabel(r'$X$ [$R_{\odot}$]')
+
+
+    plt.savefig('./plots/{:=09.5f}a_{:=06.3f}_vfr_trajectories_comparison.png'.format(a.value_in(units.au), vfr))
+    plt.close()
+
 
 if __name__ == "__main__":
     print('ola')
-    spinup_per_period_new(None, ['1.20q_001.30a_0.100e_0.90vfr_0.10f_-6mtr_snapshots.dat','1.20q_001.80a_0.100e_0.90vfr_0.10f_-6mtr_snapshots.dat' ,'1.20q_002.20a_0.100e_0.90vfr_0.10f_-6mtr_snapshots.dat'], 'a', '')
-#density_profile(1.2 | mass_unit, 263.648425528 | radius_unit)
-#orbit_example('./a_00_0000e/01_00macc_01_20mdon_0002_50a_00_0000e_-025_16rot', 1 | radius_unit, 400)
-#orbits_example('./v/01_00macc_01_20mdon_0001_00a_00_30e_-056_48rot', 1 | radius_unit, 400, 10)
-#v_vs_pars('./a.dat', './e.dat', './v.dat')
-
-#orbits_example('./data/e_001_000a_0_90vfr_000_00vexp/01_00macc_01_20mdon_0001_00a_00_1080e_00_90vfr_-044_32rot', 1 | radius_unit, 400, 10)
-
-#plot_larim('./v/01_00macc_01_20mdon_0001_00a_00_30e_-056_48rot', 1 | radius_unit, [20 | time_unit, 40 | time_unit, 60 | time_unit, 80 | time_unit])
-
-#df = pd.read_csv('./a_e_0.90_da_table.csv', index_col=0)
-#plot_momentum_a(df['a'], df, 'a', 'e', 0.6, 0.90, 0.1, 0 | units.day, '_ai')
+    #spinup_per_period_new(None, ['1.20q_001.30a_0.100e_0.90vfr_0.10f_-6mtr_snapshots.dat','1.20q_001.80a_0.100e_0.90vfr_0.10f_-6mtr_snapshots.dat' ,'1.20q_002.20a_0.100e_0.90vfr_0.10f_-6mtr_snapshots.dat'], 'a', '_')
+    #compare_with_3body_spin('./data/vfr_a_0.00_table.csv', ['./data/001.30000a_3body_rot.csv', './data/001.80000a_3body_rot.csv', './data/002.20000a_3body_rot.csv'])
+    #compare_with_3body_impact(['vfr_01.20q_001.300a_00.0000e_000.00vexp.dat', 'vfr_01.20q_001.800a_00.0000e_000.00vexp.dat', 'vfr_01.20q_002.200a_00.0000e_000.00vexp.dat'], ['./data/01.20q_001.30000a_3body_rot.csv', './data/01.20q_001.80000a_3body_rot.csv', './data/01.20q_002.20000a_3body_rot.csv'], '')
+    #compare_with_3body('./vfr_e_1.80_table.csv', ['./data/001.30000a_3body.csv'])
+    #plot_trajectories('./data/01.0000macc_01.2000mdon_01.0000racc_001.30000a_0.000e_1.900vfr_-073.63rot.csv', './data/001.30000a_01.900vfr_3body_trajectory.csv')
+    #plot_trajectories('./data/01.0000macc_01.2000mdon_01.0000racc_001.30000a_0.000e_0.900vfr_-034.88rot.csv', './data/001.30000a_00.900vfr_3body_trajectory.csv')
+    #plot_trajectories('./data/01.0000macc_01.2000mdon_01.0000racc_001.30000a_0.000e_0.900vfr_-034.88rot.csv', './data/001.30000a_06.000vfr_3body_trajectory.csv')
+    compare_correction(['vfr_01.20q_001.300a_00.0000e_000.00vexp.dat', 'vfr_01.20q_001.800a_00.0000e_000.00vexp.dat', 'vfr_01.20q_002.200a_00.0000e_000.00vexp.dat'], ['./data/01.20q_001.30000a_3body_rot.csv', './data/01.20q_001.80000a_3body_rot.csv', './data/01.20q_002.20000a_3body_rot.csv'], '')

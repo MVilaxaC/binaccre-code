@@ -282,6 +282,8 @@ def q_plot(df_plot, table_list, racc, mtr, frac_i, yn, su):
     plt.savefig('./plots/q_comparison'+su+'.png')
     plt.close()
 
+
+
 if __name__ == "__main__":
     '''
     ta = pd.read_csv('./data/e_a_0.90_table2.csv')
